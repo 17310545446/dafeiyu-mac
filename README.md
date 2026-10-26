@@ -20,6 +20,8 @@ DeepSeek 社区二创形象「鲸鱼娘 · 大肥鱼」的 **macOS 原生桌面�
 - **单击**:蹦跳 + 回嘴; **双击**:喂食(🐟 🍰 🍭 🍡 💎,每种食物有专属台词)
 - **思维链心声**:发呆时有小概率冒出灰色斜体气泡,内容取材 DS 社区梗
 - **呼吸 / 摇摆 / 伸展 / 蹦跳**:纯 Core Graphics 变换,没有逐帧图
+- **聊天**:右键「聊天…」(⌘K)打开对话面板,直连本机 LiteLLM 网关或任何 OpenAI 兼容端点;API Key 存 **Keychain**,不落明文
+- **系统监控**:每 10 秒采一次 CPU / 内存,爆表时会吐槽你(CPU ≥90%、内存 ≥93%)
 - **鼠标穿透**:设成点不到,从菜单栏图标解除
 - **窗口置顶 / 开机自启 / 回到屏幕内 / 隐藏**:右键菜单 & 菜单栏图标双入口
 - **多屏感知**:跨屏走动、换屏自动收回屏幕内
@@ -47,9 +49,19 @@ xattr -dr com.apple.quarantine /Applications/Dafeiyu.app
 | 左键双击 | 喂食菜单 |
 | 左键拖动 | 拎起来到处放 |
 | 右键 | 完整菜单(模式 / 大小 / 穿透 / 置顶 / 自启 / 退出) |
+| 右键 → 聊天… / ⌘K | 打开聊天面板(回车发送) |
+| 右键 → API 设置… | 改 Base URL / 模型 / API Key |
 | 菜单栏图标 | 同一个菜单;隐藏后从这里叫回来 |
 
-配置写在 `~/Library/Application Support/Dafeiyu/config.json`。
+配置写在 `~/Library/Application Support/Dafeiyu/config.json`,API Key 单独存 Keychain(service `io.github.dafeiyu.mac`)。
+
+聊天默认配置:
+
+| 项 | 默认值 |
+|---|---|
+| Base URL | `http://127.0.0.1:4000/v1`(本机 LiteLLM 网关) |
+| 模型 | `deepseek-chat` |
+| Key | 空(网关不鉴权时留空;走官方时填 `sk-...`) |
 
 ## 自己编译
 
@@ -63,7 +75,8 @@ swift build -c release          # 或 swift run 直接跑
 只想看看她长什么样、不开窗:
 
 ```bash
-./dist/Dafeiyu.app/Contents/MacOS/Dafeiyu --shot   # 输出 /tmp/pet-render.png
+./dist/Dafeiyu.app/Contents/MacOS/Dafeiyu --shot            # 离屏渲染一张 PNG
+./dist/Dafeiyu.app/Contents/MacOS/Dafeiyu --chat-test "你好"  # 命令行验证网关连通
 ```
 
 ## 与 Windows 原版的差异
@@ -72,8 +85,9 @@ swift build -c release          # 或 swift run 直接跑
 |---|---|
 | 三视图走动 / 拖拽 / 喂食 / 台词 / 心声 | ✅ 已移植 |
 | 鼠标穿透 / 置顶 / 自启 / 托盘菜单 | ✅ 已移植(系统实现换成 macOS 原生) |
-| DeepSeek API 聊天 | ⏳ 路线图 |
-| 天气查询 / CPU·内存监控 | ⏳ 路线图 |
+| DeepSeek API 聊天 | ✅ v0.2(默认走本机 LiteLLM 网关,也可填 DeepSeek 官方) |
+| CPU / 内存监控吐槽 | ✅ v0.2 |
+| 天气查询 | ⏳ 路线图 |
 
 ## 素材与致谢
 

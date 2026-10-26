@@ -51,6 +51,10 @@ final class PetView: NSView, NSMenuDelegate {
     var dragStartMouse: NSPoint = .zero
     var dragStartOrigin: NSPoint = .zero
     var suppressClick = false
+    weak var chat: ChatController?
+    var chatPaused = false
+    let monitor = SystemMonitor()
+    var lastMonitorAt: TimeInterval = 0
 
     var now: TimeInterval { Date().timeIntervalSince(startedAt) }
 
@@ -90,6 +94,8 @@ final class PetView: NSView, NSMenuDelegate {
             if actionT == 0 { action = nil }
         }
 
+        monitorTick()
+        if chatPaused { needsDisplay = true; return }
         if dragging { needsDisplay = true; return }
         guard let panel else { return }
 
@@ -159,6 +165,19 @@ final class PetView: NSView, NSMenuDelegate {
         let wanted: CGFloat = target != nil ? PetView.speed : 0
         curSpeed += (wanted - curSpeed) * 0.3
         needsDisplay = true
+    }
+
+    func monitorTick() {
+        let time = now
+        guard time - lastMonitorAt >= 10 else { return }
+        lastMonitorAt = time
+        let cpu = monitor.cpuUsage()
+        let mem = monitor.memoryUsage()
+        if cpu >= 90 {
+            say("CPU跑满了,再这样下去我就卡死了")
+        } else if mem >= 93 {
+            say("内存爆了,快关掉几个没用的东西吧,注意,别把我关了")
+        }
     }
 
     func maybeIdleAction() {
@@ -477,6 +496,14 @@ final class PetView: NSView, NSMenuDelegate {
         addCheck(menu, "开机自启", cfg.autostart, #selector(menuToggleAutostart))
         menu.addItem(NSMenuItem.separator())
 
+        let chatItem = NSMenuItem(title: "聊天…", action: #selector(menuOpenChat), keyEquivalent: "k")
+        chatItem.target = self
+        menu.addItem(chatItem)
+
+        let settingsItem = NSMenuItem(title: "API 设置…", action: #selector(menuOpenSettings), keyEquivalent: "")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+
         let sayItem = NSMenuItem(title: "说句话", action: #selector(menuSay), keyEquivalent: "")
         sayItem.target = self
         menu.addItem(sayItem)
@@ -525,6 +552,53 @@ final class PetView: NSView, NSMenuDelegate {
 
     @objc func menuToggleAutostart() {
         setAutostart(!cfg.autostart)
+    }
+
+    @objc func menuOpenChat() {
+        guard let chat, let f = panel?.frame else { return }
+        chat.toggle(near: f)
+    }
+
+    @objc func menuOpenSettings() {
+        let cfg = Config.load()
+        let alert = NSAlert()
+        alert.messageText = "API 设置"
+        alert.informativeText = "默认指向本机 LiteLLM 网关(http://127.0.0.1:4000/v1)。网关不需要鉴权时 Key 留空。"
+
+        let stack = NSStackView(frame: NSRect(x: 0, y: 0, width: 340, height: 100))
+        stack.orientation = .vertical
+        stack.spacing = 8
+
+        let urlField = NSTextField(string: cfg.baseURL)
+        let modelField = NSTextField(string: cfg.model)
+        let keyField = NSSecureTextField(string: Keychain.read(account: "api-key") ?? "")
+
+        for (label, field) in [("Base URL", urlField), ("模型", modelField), ("API Key", keyField)] {
+            let row = NSStackView()
+            row.orientation = .horizontal
+            row.spacing = 8
+            let l = NSTextField(labelWithString: label)
+            l.widthAnchor.constraint(equalToConstant: 70).isActive = true
+            field.widthAnchor.constraint(equalToConstant: 250).isActive = true
+            row.addArrangedSubview(l)
+            row.addArrangedSubview(field)
+            stack.addArrangedSubview(row)
+        }
+        alert.accessoryView = stack
+        alert.addButton(withTitle: "保存")
+        alert.addButton(withTitle: "取消")
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            var newCfg = cfg
+            let url = urlField.stringValue.trimmingCharacters(in: .whitespaces)
+            let model = modelField.stringValue.trimmingCharacters(in: .whitespaces)
+            newCfg.baseURL = url.isEmpty ? "http://127.0.0.1:4000/v1" : url
+            newCfg.model = model.isEmpty ? "deepseek-chat" : model
+            newCfg.save()
+            self.cfg = newCfg
+            Keychain.save(account: "api-key", value: keyField.stringValue)
+            say("设置好了,来聊两句?")
+        }
     }
 
     @objc func menuSay() {

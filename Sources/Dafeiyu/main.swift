@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var panel: PetPanel!
     var pet: PetView!
     var statusItem: NSStatusItem!
+    var chat: ChatController!
     var hiddenByUser = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -46,7 +47,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         log("ordered front visible=\(panel.isVisible) frame=\(panel.frame)")
         pet.start()
 
+        let chat = ChatController()
+        chat.pet = pet
+        pet.chat = chat
+        self.chat = chat
+
         setupStatusItem(icon: lib.icon())
+
+        if CommandLine.arguments.contains("--open-chat") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                guard let self, let f = self.panel?.frame else { return }
+                self.chat.show(near: f)
+            }
+        }
 
         NotificationCenter.default.addObserver(self, selector: #selector(saveState),
                                                name: NSApplication.willTerminateNotification, object: nil)
@@ -131,6 +144,24 @@ if CommandLine.arguments.contains("--shot") {
 }
 
 let app = NSApplication.shared
+
+if let idx = CommandLine.arguments.firstIndex(of: "--chat-test") {
+    let msg = CommandLine.arguments.count > idx + 1 ? CommandLine.arguments[idx + 1] : "你好"
+    let cfg = Config.load()
+    let key = Keychain.read(account: "api-key") ?? ""
+    let sem = DispatchSemaphore(value: 0)
+    LLMClient.chat(baseURL: cfg.baseURL, model: cfg.model, apiKey: key,
+                   history: [.init(role: "user", content: msg)]) { result in
+        switch result {
+        case .success(let reply): print("OK[\(cfg.model)]: \(reply)")
+        case .failure(let err): print("ERR: \(err.localizedDescription)")
+        }
+        sem.signal()
+    }
+    sem.wait()
+    exit(0)
+}
+
 let delegate = AppDelegate()
 app.delegate = delegate
 app.setActivationPolicy(.accessory)

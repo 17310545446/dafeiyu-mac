@@ -11,6 +11,8 @@ struct Config: Codable {
     var autostart: Bool = false
     var x: Double? = nil
     var y: Double? = nil
+    var baseURL: String = "http://127.0.0.1:4000/v1"
+    var model: String = "deepseek-chat"
 
     init() {}
 
@@ -23,6 +25,8 @@ struct Config: Codable {
         autostart = (try? c.decodeIfPresent(Bool.self, forKey: .autostart)) ?? false
         x = try? c.decodeIfPresent(Double.self, forKey: .x)
         y = try? c.decodeIfPresent(Double.self, forKey: .y)
+        baseURL = (try? c.decodeIfPresent(String.self, forKey: .baseURL)) ?? "http://127.0.0.1:4000/v1"
+        model = (try? c.decodeIfPresent(String.self, forKey: .model)) ?? "deepseek-chat"
     }
 
     static var supportDir: URL {
