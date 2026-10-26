@@ -505,6 +505,10 @@ final class PetView: NSView, NSMenuDelegate {
         settingsItem.target = self
         menu.addItem(settingsItem)
 
+        let weatherItem = NSMenuItem(title: "看天气", action: #selector(menuWeather), keyEquivalent: "")
+        weatherItem.target = self
+        menu.addItem(weatherItem)
+
         let sayItem = NSMenuItem(title: "说句话", action: #selector(menuSay), keyEquivalent: "")
         sayItem.target = self
         menu.addItem(sayItem)
@@ -566,15 +570,17 @@ final class PetView: NSView, NSMenuDelegate {
         alert.messageText = "API 设置"
         alert.informativeText = "默认指向本机 LiteLLM 网关(http://127.0.0.1:4000/v1)。网关不需要鉴权时 Key 留空。"
 
-        let stack = NSStackView(frame: NSRect(x: 0, y: 0, width: 340, height: 100))
+        let stack = NSStackView(frame: NSRect(x: 0, y: 0, width: 340, height: 132))
         stack.orientation = .vertical
         stack.spacing = 8
 
         let urlField = NSTextField(string: cfg.baseURL)
         let modelField = NSTextField(string: cfg.model)
         let keyField = NSSecureTextField(string: Keychain.read(account: "api-key") ?? "")
+        let cityField = NSTextField(string: cfg.city)
+        cityField.placeholderString = "留空=按 IP 自动定位"
 
-        for (label, field) in [("Base URL", urlField), ("模型", modelField), ("API Key", keyField)] {
+        for (label, field) in [("Base URL", urlField), ("模型", modelField), ("API Key", keyField), ("城市", cityField)] {
             let row = NSStackView()
             row.orientation = .horizontal
             row.spacing = 8
@@ -595,10 +601,26 @@ final class PetView: NSView, NSMenuDelegate {
             let model = modelField.stringValue.trimmingCharacters(in: .whitespaces)
             newCfg.baseURL = url.isEmpty ? "http://127.0.0.1:4000/v1" : url
             newCfg.model = model.isEmpty ? "deepseek-chat" : model
+            newCfg.city = cityField.stringValue.trimmingCharacters(in: .whitespaces)
             newCfg.save()
             self.cfg = newCfg
             Keychain.save(account: "api-key", value: keyField.stringValue)
             say("设置好了,来聊两句?")
+        }
+    }
+
+    @objc func menuWeather() {
+        say("我看看云图…")
+        WeatherClient.fetch(city: cfg.city) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch result {
+                case .success(let w):
+                    self.say(w.speech)
+                case .failure:
+                    self.say("查不到天气,网络还是 wttr.in 挂了?")
+                }
+            }
         }
     }
 

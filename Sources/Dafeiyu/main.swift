@@ -152,6 +152,22 @@ if CommandLine.arguments.contains("--shot") {
 
 let app = NSApplication.shared
 
+if let widx = CommandLine.arguments.firstIndex(of: "--weather-test") {
+    let city = CommandLine.arguments.count > widx + 1 ? CommandLine.arguments[widx + 1] : "汕头"
+    let sem = DispatchSemaphore(value: 0)
+    WeatherClient.fetch(city: city) { result in
+        switch result {
+        case .success(let w):
+            print("OK: \(w.speech)")
+        case .failure(let e):
+            print("ERR: \(e.localizedDescription)")
+        }
+        sem.signal()
+    }
+    sem.wait()
+    exit(0)
+}
+
 if let idx = CommandLine.arguments.firstIndex(of: "--chat-test") {
     let msg = CommandLine.arguments.count > idx + 1 ? CommandLine.arguments[idx + 1] : "你好"
     let cfg = Config.load()
