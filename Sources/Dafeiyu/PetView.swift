@@ -112,6 +112,13 @@ final class PetView: NSView, NSMenuDelegate {
     let activity = ActivityMonitor()
     var currentStatus = ActivityMonitor.Status()
     var lastStatusSpeak: TimeInterval = -999
+
+    // 举牌小剧场
+    struct SignLine { let text: String; let dur: Double }
+    var signQueue: [SignLine] = []
+    var signCurrent: SignLine?
+    var signEnd: TimeInterval = 0
+    var signPreview: String?
     let monitor = SystemMonitor()
     var lastMonitorAt: TimeInterval = 0
 
@@ -188,6 +195,15 @@ final class PetView: NSView, NSMenuDelegate {
             stepPhysics()
             needsDisplay = true
             return
+        }
+        if let cur = signCurrent, time >= signEnd {
+            _ = cur
+            if signQueue.isEmpty {
+                signCurrent = nil
+            } else {
+                signCurrent = signQueue.removeFirst()
+                signEnd = time + (signCurrent?.dur ?? 2.6)
+            }
         }
         if squash > 0 { squash = max(0, squash - 0.05) }
         if abs(airRotation) > 0.005 { airRotation *= 0.92 } else { airRotation = 0 }
@@ -276,6 +292,11 @@ final class PetView: NSView, NSMenuDelegate {
 
     /// 待机动作调度:大部分时间什么都不做,偶尔看看/想想/溜达一会儿。
     func performRandomAction(_ time: TimeInterval) {
+        if Double.random(in: 0...1) < 0.12 {
+            startPlaylet()
+            nextActionAt = time + 8
+            return
+        }
         if skin == .dafeiyu, let act = DafeiyuSkin.idleActs.randomElement() {
             stateOverride = act.pose
             overrideUntil = time + act.seconds
@@ -738,6 +759,79 @@ final class PetView: NSView, NSMenuDelegate {
                  from: .zero, operation: .sourceOver, fraction: 1)
         ctx.restoreGState()
         drawParticles()
+        drawSignIfNeeded()
+    }
+
+    func drawSignIfNeeded() {
+        if let preview = signPreview {
+            drawSign(preview)
+        } else if let cur = signCurrent {
+            drawSign(cur.text)
+        }
+    }
+
+    func drawSign(_ text: String) {
+        let font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        let w = min(bounds.width - 16, (text as NSString).size(withAttributes: [.font: font]).width + 26)
+        let h: CGFloat = 38
+        let cx = bounds.midX
+        let top = PetView.margin + CGFloat(spriteH) + 4
+        let rect = NSRect(x: cx - w / 2, y: top, width: w, height: h)
+
+        if rect.maxY > bounds.maxY - 2 { return }
+
+        // 木棍
+        let stick = NSBezierPath()
+        stick.move(to: NSPoint(x: cx + w / 2 - 8, y: rect.minY + 2))
+        stick.line(to: NSPoint(x: cx + w / 2 - 18, y: rect.minY - 14))
+        stick.lineWidth = 3
+        stick.lineCapStyle = .round
+        NSColor(calibratedRed: 0.60, green: 0.42, blue: 0.26, alpha: 1).setStroke()
+        stick.stroke()
+
+        // 牌面
+        let path = NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6)
+        NSColor(calibratedRed: 1.0, green: 0.94, blue: 0.74, alpha: 0.98).setFill()
+        path.fill()
+        NSColor(calibratedRed: 0.84, green: 0.68, blue: 0.34, alpha: 1).setStroke()
+        path.lineWidth = 2
+        path.stroke()
+
+        // 字
+        let para = NSMutableParagraphStyle()
+        para.alignment = .center
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: NSColor(calibratedRed: 0.26, green: 0.20, blue: 0.13, alpha: 1),
+            .paragraphStyle: para,
+        ]
+        (text as NSString).draw(in: NSRect(x: rect.minX + 4, y: rect.midY - 9,
+                                           width: rect.width - 8, height: 20),
+                                withAttributes: attrs)
+    }
+
+    /// 一段 2–3 张牌的短剧。
+    func startPlaylet() {
+        let scripts: [[String]] = [
+            ["需求再改我就倒立", "算了,倒立也不会"],
+            ["今天必须早睡", "……再写五分钟"],
+            ["这个 bug 我见过", "在梦里"],
+            ["编译通过了", "但我没改代码"],
+            ["摸鱼是工作的一部分", "鱼说的"],
+            ["我不是胖", "我是圆"],
+            ["余额还有一点", "够吃几顿白饭"],
+        ]
+        guard let script = scripts.randomElement(), !script.isEmpty else { return }
+        signCurrent = SignLine(text: script[0], dur: 2.8)
+        signQueue = script.dropFirst().map { SignLine(text: $0, dur: 2.8) }
+        signEnd = now + 2.8
+        if skin == .dafeiyu {
+            stateOverride = .happy
+            overrideUntil = now + 1.6
+        }
+        AudioManager.shared.playSfx("pop")
+        needsDisplay = true
+        log("playlet: \(script.joined(separator: " / "))")
     }
 
     func drawBubble() {
@@ -1001,6 +1095,10 @@ final class PetView: NSView, NSMenuDelegate {
         gatewayItem.target = self
         menu.addItem(gatewayItem)
 
+        let playletItem = NSMenuItem(title: "演一段", action: #selector(menuPlaylet), keyEquivalent: "")
+        playletItem.target = self
+        menu.addItem(playletItem)
+
         let weatherItem = NSMenuItem(title: "看天气", action: #selector(menuWeather), keyEquivalent: "")
         weatherItem.target = self
         menu.addItem(weatherItem)
@@ -1147,6 +1245,10 @@ final class PetView: NSView, NSMenuDelegate {
             NSWorkspace.shared.open(url)
             say("网关面板在这儿")
         }
+    }
+
+    @objc func menuPlaylet() {
+        startPlaylet()
     }
 
     @objc func menuWeather() {

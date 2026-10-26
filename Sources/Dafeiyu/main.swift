@@ -166,6 +166,12 @@ if CommandLine.arguments.contains("--shot") {
     log("shot: view \(view.bounds)")
     if let i = CommandLine.arguments.firstIndex(of: "--shot"),
        CommandLine.arguments.count > i + 1,
+       CommandLine.arguments[i + 1] == "sign" {
+        view.signPreview = "编译通过了"
+        view.stateOverride = .happy
+        view.overrideUntil = .greatestFiniteMagnitude
+    } else if let i = CommandLine.arguments.firstIndex(of: "--shot"),
+       CommandLine.arguments.count > i + 1,
        let st = DState(rawValue: CommandLine.arguments[i + 1]) {
         view.stateOverride = st
         view.overrideUntil = .greatestFiniteMagnitude
