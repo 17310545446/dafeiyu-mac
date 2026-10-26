@@ -44,6 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panel.setFrameOrigin(NSPoint(x: vf.maxX - pet.winW - 80, y: vf.minY + 60))
         }
         pet.snapInto(panel: panel)
+        pet.homeCenter = NSPoint(x: panel.frame.midX, y: panel.frame.midY)
         panel.orderFrontRegardless()
         log("ordered front visible=\(panel.isVisible) frame=\(panel.frame)")
         pet.start()

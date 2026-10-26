@@ -34,8 +34,12 @@ final class PetView: NSView, NSMenuDelegate {
     var target: NSPoint?
     var restUntil: TimeInterval = 0
     var curSpeed: CGFloat = 0
-    var action: String?
+    enum Action: Equatable { case sway, stretch, think, lookLeft, lookRight, lookUp, stroll, jump }
+    var action: Action?
     var actionT: CGFloat = 0
+    var nextActionAt: TimeInterval = 3
+    var homeCenter: NSPoint = .zero
+    var walkSpeed: CGFloat = PetView.speed
 
     var bubbleText = ""
     var bubbleInner = false
@@ -91,7 +95,7 @@ final class PetView: NSView, NSMenuDelegate {
         if crossT > 0 { crossT = max(0, crossT - 0.15) }
         if actionT > 0 {
             actionT = max(0, actionT - 0.03)
-            if actionT == 0 { action = nil }
+            if actionT == 0 { finishAction() }
         }
 
         monitorTick()
@@ -114,29 +118,26 @@ final class PetView: NSView, NSMenuDelegate {
                 let tx = min(max(geo.minX, m.x - f.width / 2), geo.maxX - f.width)
                 let ty = min(max(geo.minY, m.y - 90), geo.maxY - f.height)
                 target = NSPoint(x: tx + f.width / 2, y: ty + f.height / 2)
+                walkSpeed = PetView.speed
             }
 
         case .wander:
-            if target == nil {
-                if time < restUntil {
-                    maybeIdleAction()
-                    needsDisplay = true
-                    return
-                }
+            if target == nil && time >= restUntil {
                 let f = panel.frame
                 let geo = screenFrame(containing: NSPoint(x: f.midX, y: f.midY))
                 let loX = geo.minX + 40
                 let hiX = max(loX + 1, geo.maxX - f.width - 40)
                 let loY = geo.minY + 40
                 let hiY = max(loY + 1, geo.maxY - f.height - 40)
+                walkSpeed = PetView.speed
                 target = NSPoint(x: CGFloat.random(in: loX...hiX) + f.width / 2,
                                  y: CGFloat.random(in: loY...hiY) + f.height / 2)
             }
 
         case .still:
-            maybeIdleAction()
-            needsDisplay = true
-            return
+            if target == nil && time >= nextActionAt {
+                performRandomAction(time)
+            }
         }
 
         if let tg = target {
@@ -146,8 +147,13 @@ final class PetView: NSView, NSMenuDelegate {
             let dist = sqrt(dx * dx + dy * dy)
             if dist < 12 {
                 target = nil
-                restUntil = time + Double.random(in: 8...18)
                 setDir(.down, facing: 1)
+                if mode == .still {
+                    restUntil = time + Double.random(in: 4...9)
+                    nextActionAt = time + Double.random(in: 3...8)
+                } else {
+                    restUntil = time + Double.random(in: 8...18)
+                }
             } else {
                 let step = curSpeed * CGFloat(PetView.tick)
                 let nx = cx + dx / dist * step
@@ -159,10 +165,10 @@ final class PetView: NSView, NSMenuDelegate {
                     setDir(dy < 0 ? .down : .up)
                 }
             }
-            if CGFloat.random(in: 0...1) < 0.002 && jumpT == 0 { jumpT = 0.5 }
+            if mode != .still, CGFloat.random(in: 0...1) < 0.002, jumpT == 0 { jumpT = 0.5 }
         }
 
-        let wanted: CGFloat = target != nil ? PetView.speed : 0
+        let wanted: CGFloat = target != nil ? walkSpeed : 0
         curSpeed += (wanted - curSpeed) * 0.3
         needsDisplay = true
     }
@@ -180,23 +186,81 @@ final class PetView: NSView, NSMenuDelegate {
         }
     }
 
-    func maybeIdleAction() {
-        guard CGFloat.random(in: 0...1) < 0.005 else { return }
-        let pick = CGFloat.random(in: 0...1)
-        if pick < 0.35 {
-            jumpT = 1.0
-        } else if pick < 0.6 {
-            action = "sway"; actionT = 1.0
-        } else if pick < 0.8 {
-            action = "stretch"; actionT = 1.0
-        } else if pick < 0.9, now - lastSpeakAt >= 30 {
-            lastSpeakAt = now
-            if pick < 0.82 {
+    /// 待机动作调度:大部分时间什么都不做,偶尔看看/想想/溜达一会儿。
+    func performRandomAction(_ time: TimeInterval) {
+        nextActionAt = time + Double.random(in: 7...16)
+        let r = Double.random(in: 0...1)
+        switch r {
+        case ..<0.22:
+            log("action: 发呆")
+        case ..<0.42:
+            let pick = Int.random(in: 0...2)
+            if pick == 0 {
+                action = .lookLeft
+                setDir(.left, facing: 1)
+            } else if pick == 1 {
+                action = .lookRight
+                setDir(.right, facing: -1)
+            } else {
+                action = .lookUp
+                setDir(.up)
+            }
+            actionT = 1.3
+            log("action: 张望 \(pick)")
+        case ..<0.58:
+            action = .think
+            actionT = 2.0
+            if Bool.random(), time - lastSpeakAt >= 25 {
+                lastSpeakAt = time
                 say(Lines.inner.randomElement() ?? "……", inner: true)
             } else {
-                say(Lines.idle.randomElement() ?? "……")
+                say("……", inner: true)
+            }
+            log("action: 思考")
+        case ..<0.78:
+            log("action: 溜达 \(startStroll() ? "走" : "太近没走")")
+        case ..<0.88:
+            action = .stretch
+            actionT = 1.0
+            log("action: 伸展")
+        case ..<0.95:
+            jumpT = 0.5
+            log("action: 蹦")
+        default:
+            action = .sway
+            actionT = 1.0
+            log("action: 摇晃")
+        }
+    }
+
+    /// 原地模式下的小范围散步:只在家附近晃,不跑远。
+    @discardableResult
+    func startStroll() -> Bool {
+        guard let panel else { return false }
+        let f = panel.frame
+        let geo = screenFrame(containing: NSPoint(x: f.midX, y: f.midY))
+        let anchor = homeCenter == .zero ? NSPoint(x: f.midX, y: f.midY) : homeCenter
+        let radius: CGFloat = 170
+        var tx = anchor.x + CGFloat.random(in: -radius...radius)
+        var ty = anchor.y + CGFloat.random(in: -radius * 0.55...radius * 0.55)
+        tx = min(max(geo.minX + f.width / 2, tx), geo.maxX - f.width / 2)
+        ty = min(max(geo.minY + f.height / 2, ty), geo.maxY - f.height / 2)
+        guard hypot(tx - f.midX, ty - f.midY) > 45 else { return false }
+        walkSpeed = 170
+        target = NSPoint(x: tx, y: ty)
+        return true
+    }
+
+    func finishAction() {
+        if let a = action {
+            switch a {
+            case .lookLeft, .lookRight, .lookUp:
+                setDir(.down, facing: 1)
+            default:
+                break
             }
         }
+        action = nil
     }
 
     // MARK: 说话
@@ -291,17 +355,21 @@ final class PetView: NSView, NSMenuDelegate {
         if !bubbleText.isEmpty && time < bubbleUntil { drawBubble() }
 
         let walking = target != nil && !dragging
-        let sway = walking ? fsin(time * 9.0) * 3.5 : fsin(time * 2.5) * 1.5
+        let sway: CGFloat = walking
+            ? fsin(time * 9.0) * 3.5
+            : (action == .sway ? fsin(time * 7.0) * 4.5 : 0)
         let bob: CGFloat = walking ? -abs(fsin(time * 4.5)) * 7.0 : 0
-        let breath = 1.0 + 0.02 * fsin(time * 2.5)
+        let breath = 1.0 + 0.008 * fsin(time * 1.6)
         let jump: CGFloat = jumpT > 0 ? -abs(fsin(jumpT * .pi)) * 14 * jumpT : 0
 
         var actRot: CGFloat = 0
         var actSX: CGFloat = 0
         var actSY: CGFloat = 0
-        if action == "sway" {
+        if action == .sway {
             actRot = fsin(actionT * .pi * 2) * 10 * actionT
-        } else if action == "stretch" {
+        } else if action == .think {
+            actRot = 2.5
+        } else if action == .stretch {
             actSY = 0.06 * fsin(actionT * .pi)
             actSX = -0.03 * fsin(actionT * .pi)
         }
@@ -415,6 +483,8 @@ final class PetView: NSView, NSMenuDelegate {
             target = nil
             restUntil = now + Double.random(in: 6...14)
             if Bool.random() { say(Lines.drag.randomElement() ?? "放我下来！") }
+            if let f = panel?.frame { homeCenter = NSPoint(x: f.midX, y: f.midY) }
+            nextActionAt = now + 2
             savePos()
         } else {
             if CGFloat.random(in: 0...1) < 0.7 { jumpT = 1.0 }
@@ -548,6 +618,8 @@ final class PetView: NSView, NSMenuDelegate {
         cfg.mode = raw
         cfg.save()
         target = nil
+        if let f = panel?.frame { homeCenter = NSPoint(x: f.midX, y: f.midY) }
+        nextActionAt = now + 2
         say(m == .follow ? "跟着你咯～" : (m == .still ? "那我就在这儿待着" : "出去溜达一圈"))
     }
 
