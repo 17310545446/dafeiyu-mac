@@ -45,6 +45,7 @@ final class PetView: NSView, NSMenuDelegate {
     var bubbleInner = false
     var bubbleUntil: TimeInterval = 0
     var lastLine = ""
+    var recentLines: [String] = []
     var lastSpeakAt: TimeInterval = -999
 
     var jumpT: CGFloat = 0
@@ -192,6 +193,9 @@ final class PetView: NSView, NSMenuDelegate {
         let r = Double.random(in: 0...1)
         switch r {
         case ..<0.22:
+            if Double.random(in: 0...1) < 0.5, let line = contextualLine() {
+                say(line)
+            }
             log("action: 发呆")
         case ..<0.42:
             let pick = Int.random(in: 0...2)
@@ -212,7 +216,7 @@ final class PetView: NSView, NSMenuDelegate {
             actionT = 2.0
             if Bool.random(), time - lastSpeakAt >= 25 {
                 lastSpeakAt = time
-                say(Lines.inner.randomElement() ?? "……", inner: true)
+                say(pick(Lines.inner), inner: true)
             } else {
                 say("……", inner: true)
             }
@@ -263,6 +267,34 @@ final class PetView: NSView, NSMenuDelegate {
         action = nil
     }
 
+    // MARK: 台词选择
+
+    /// 从池子里挑一条,避开最近 12 条,减少短期重复。
+    func pick(_ pool: [String]) -> String {
+        guard !pool.isEmpty else { return "……" }
+        let fresh = pool.filter { !recentLines.contains($0) }
+        let chosen = (fresh.isEmpty ? pool : fresh).randomElement() ?? "……"
+        recentLines.append(chosen)
+        if recentLines.count > 12 { recentLines.removeFirst(recentLines.count - 12) }
+        return chosen
+    }
+
+    func contextualLine() -> String? {
+        let h = Calendar.current.component(.hour, from: Date())
+        switch h {
+        case 0..<5: return pick(Lines.lateNight)
+        case 5..<11: return pick(Lines.morning)
+        case 11..<14: return pick(Lines.noon)
+        case 17..<20: return pick(Lines.evening)
+        case 22..<24: return pick(Lines.night)
+        default: return nil
+        }
+    }
+
+    func greet() {
+        say(contextualLine() ?? pick(Lines.idle))
+    }
+
     // MARK: 说话
 
     func say(_ text: String, inner: Bool = false) {
@@ -271,6 +303,7 @@ final class PetView: NSView, NSMenuDelegate {
         bubbleInner = inner
         bubbleText = inner ? "(\(text))" : text
         bubbleUntil = now + 2.8
+        log("say: \(bubbleText)")
         needsDisplay = true
     }
 
@@ -482,13 +515,13 @@ final class PetView: NSView, NSMenuDelegate {
             setDir(.down, facing: 1)
             target = nil
             restUntil = now + Double.random(in: 6...14)
-            if Bool.random() { say(Lines.drag.randomElement() ?? "放我下来！") }
+            if Bool.random() { say(pick(Lines.drag)) }
             if let f = panel?.frame { homeCenter = NSPoint(x: f.midX, y: f.midY) }
             nextActionAt = now + 2
             savePos()
         } else {
             if CGFloat.random(in: 0...1) < 0.7 { jumpT = 1.0 }
-            if CGFloat.random(in: 0...1) < 0.6 { say(Lines.react.randomElement() ?? "别戳我") }
+            if CGFloat.random(in: 0...1) < 0.6 { say(pick(Lines.react)) }
         }
         needsDisplay = true
     }
@@ -519,7 +552,7 @@ final class PetView: NSView, NSMenuDelegate {
         guard let emoji = sender.representedObject as? String else { return }
         jumpT = 0.6
         let pool = Lines.foodLines[emoji] ?? ["好吃！"]
-        say(pool.randomElement() ?? "好吃！")
+        say(pick(pool))
     }
 
     // MARK: 菜单
@@ -754,7 +787,7 @@ final class PetView: NSView, NSMenuDelegate {
     }
 
     @objc func menuSay() {
-        say(Lines.idle.randomElement() ?? "在呢")
+        say(pick(Lines.idle))
         jumpT = 1.0
     }
 

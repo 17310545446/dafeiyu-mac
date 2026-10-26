@@ -48,6 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.orderFrontRegardless()
         log("ordered front visible=\(panel.isVisible) frame=\(panel.frame)")
         pet.start()
+        pet.greet()
 
         let chat = ChatController()
         chat.pet = pet
