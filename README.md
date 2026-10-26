@@ -2,7 +2,7 @@
 
 DeepSeek 社区二创形象「鲸鱼娘 · 大肥鱼」的 **macOS 原生桌面宠物**。
 
-> 原版是 [1190fasheqi/dafeiyu-pet](https://github.com/1190fasheqi/dafeiyu-pet)(Python + PySide6,Windows)。本仓库把同一套素材和玩法移植成 Swift / AppKit 原生实现:**不用 Electron、不用 Python 运行时,2.7 MB 的 .app,实测常驻内存约 50 MB(AppKit 生效后的 RSS),Apple Silicon 与 Intel 通用**。
+> 原版是 [1190fasheqi/dafeiyu-pet](https://github.com/1190fasheqi/dafeiyu-pet)(Python + PySide6,Windows)。本仓库把同一套素材和玩法移植成 Swift / AppKit 原生实现:**不用 Electron、不用 Python 运行时,2.7 MB 的 .app,实测内存:待机约 50 MB,开着聊天面板约 120 MB(三次采样稳定,无泄漏),Apple Silicon 与 Intel 通用**。
 
 [![Release](https://img.shields.io/github/v/release/17310545446/dafeiyu-mac)](https://github.com/17310545446/dafeiyu-mac/releases)
 [![Platform](https://img.shields.io/badge/macOS-13%2B-blue)](https://github.com/17310545446/dafeiyu-mac)
