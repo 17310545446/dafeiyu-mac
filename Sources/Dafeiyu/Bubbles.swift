@@ -88,7 +88,7 @@ final class FunctionBar: FloatingPanel {
 }
 
 /// 一行聊天胶囊(原版 420×56 的白底输入框)。
-final class ChatPill: FloatingPanel {
+final class ChatPill: FloatingPanel, NSWindowDelegate {
     var onSubmit: ((String) -> Void)?
 
     private let field = NSTextField()
@@ -127,6 +127,13 @@ final class ChatPill: FloatingPanel {
         send.target = self
         send.action = #selector(submit)
         bg.addSubview(send)
+
+        delegate = self
+    }
+
+    /// 点到别处(窗口失去键盘焦点)就收起,不用专门找关闭按钮。
+    func windowDidResignKey(_ notification: Notification) {
+        orderOut(nil)
     }
 
     func showAndFocus(above petFrame: NSRect) {
