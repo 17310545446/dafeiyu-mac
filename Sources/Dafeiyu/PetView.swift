@@ -497,6 +497,7 @@ final class PetView: NSView, NSMenuDelegate {
         menu.addItem(NSMenuItem.separator())
 
         let chatItem = NSMenuItem(title: "聊天…", action: #selector(menuOpenChat), keyEquivalent: "k")
+        chatItem.keyEquivalentModifierMask = [.control, .option]
         chatItem.target = self
         menu.addItem(chatItem)
 

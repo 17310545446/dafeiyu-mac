@@ -52,6 +52,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pet.chat = chat
         self.chat = chat
 
+        HotKeyCenter.shared.onFire = { [weak self] in
+            guard let self, let f = self.panel?.frame else { return }
+            self.chat.toggle(near: f)
+        }
+        let hkStatus = HotKeyCenter.shared.register()
+        log("hotkey ⌃⌥K register status=\(hkStatus)")
+
         setupStatusItem(icon: lib.icon())
 
         if CommandLine.arguments.contains("--open-chat") {
