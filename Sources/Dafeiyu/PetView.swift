@@ -14,7 +14,7 @@ final class PetView: NSView, NSMenuDelegate {
     static let agentLabel = "io.github.dafeiyu.mac"
 
     enum Mode: String { case wander, follow, still }
-    enum Skin: String { case classic, dafeiyu }
+    enum Skin: String { case classic, dafeiyu, bigfish }
     enum Dir { case up, down, left, right }
 
     let lib: SpriteLibrary
@@ -128,6 +128,7 @@ final class PetView: NSView, NSMenuDelegate {
         switch skin {
         case .classic: return Config.spriteHeight(for: size)
         case .dafeiyu: return max(90, Int((620.0 * size * 0.5).rounded()))
+        case .bigfish: return max(90, Int((340.0 * size).rounded()))
         }
     }
 
@@ -137,9 +138,11 @@ final class PetView: NSView, NSMenuDelegate {
         self.spriteH = spriteH
         self.skin = Skin(rawValue: cfg.skin) ?? .dafeiyu
         let mx = CGFloat(spriteH) * 0.062 + 6
-        self.winW = self.skin == .dafeiyu
-            ? CGFloat(spriteH) * (503.0 / 620.0) + mx * 2
-            : lib.maxWidth(height: spriteH) + mx * 2
+        switch self.skin {
+        case .dafeiyu: self.winW = CGFloat(spriteH) * (503.0 / 620.0) + mx * 2
+        case .bigfish: self.winW = CGFloat(spriteH) + mx * 2
+        case .classic: self.winW = lib.maxWidth(height: spriteH) + mx * 2
+        }
         self.winH = CGFloat(spriteH) + PetView.bubbleH + PetView.margin * 2 + 10
         super.init(frame: NSRect(x: 0, y: 0, width: winW, height: winH))
         self.mode = Mode(rawValue: cfg.mode) ?? .still
@@ -538,9 +541,11 @@ final class PetView: NSView, NSMenuDelegate {
         let newH = PetView.displayHeight(skin: skin, size: mult)
         spriteH = newH
         let mx = CGFloat(newH) * 0.062 + 6
-        winW = skin == .dafeiyu
-            ? CGFloat(newH) * (503.0 / 620.0) + mx * 2
-            : lib.maxWidth(height: newH) + mx * 2
+        switch skin {
+        case .dafeiyu: winW = CGFloat(newH) * (503.0 / 620.0) + mx * 2
+        case .bigfish: winW = CGFloat(newH) + mx * 2
+        case .classic: winW = lib.maxWidth(height: newH) + mx * 2
+        }
         winH = CGFloat(newH) + PetView.bubbleH + PetView.margin * 2 + 10
         let old = panel.frame
         let origin = NSPoint(x: old.midX - winW / 2, y: old.minY)
@@ -562,6 +567,10 @@ final class PetView: NSView, NSMenuDelegate {
         let time = now
         if !bubbleText.isEmpty && time < bubbleUntil { drawBubble() }
 
+        if skin == .bigfish {
+            drawBigfish(ctx, time)
+            return
+        }
         if skin == .dafeiyu {
             drawDafeiyu(ctx, time)
             return
@@ -699,6 +708,53 @@ final class PetView: NSView, NSMenuDelegate {
         velocity = CGPoint(x: 700, y: 900)
         falling = true
         log("physics: throw from \(Int(panel?.frame.minX ?? 0)),\(Int(panel?.frame.minY ?? 0))")
+    }
+
+    func bigfishAnim(_ time: TimeInterval) -> String {
+        if falling || dragging { return "panic" }
+        if time < voiceUntil { return "confirm" }
+        switch currentStatus.kind {
+        case .thinking, .tool, .testing, .building, .running: return "type"
+        default: break
+        }
+        if signCurrent != nil || signPreview != nil { return "sign" }
+        if let a = action {
+            switch a {
+            case .stretch: return "wave"
+            case .think: return "type"
+            default: break
+            }
+        }
+        if jumpT > 0 { return "celebrate" }
+        if let cur = signCurrent, cur.text.isEmpty { return "sign" }
+        return "breathe"
+    }
+
+    func drawBigfish(_ ctx: CGContext, _ time: TimeInterval) {
+        guard let img = BigfishSkin.shared.frame(bigfishAnim(time), at: time) else { return }
+        let h = CGFloat(spriteH)
+        let w = h * CGFloat(img.width) / CGFloat(img.height)
+
+        let sway: CGFloat = (target != nil && !dragging) ? fsin(time * 9.0) * 2.0 : 0
+        let jump: CGFloat = jumpT > 0 ? -abs(fsin(jumpT * .pi)) * 14 * jumpT : 0
+
+        let wantLeft: Bool
+        switch dir {
+        case .left: wantLeft = true
+        case .right: wantLeft = false
+        case .up, .down: wantLeft = true
+        }
+
+        ctx.saveGState()
+        ctx.translateBy(x: bounds.midX, y: PetView.margin)
+        ctx.rotate(by: sway + airRotation)
+        ctx.scaleBy(x: 1 + 0.18 * squash, y: 1 - 0.22 * squash)
+        if wantLeft { ctx.scaleBy(x: -1, y: 1) }
+        ctx.draw(img, in: CGRect(x: -w / 2, y: jump, width: w, height: h))
+        ctx.restoreGState()
+
+        drawParticles()
+        drawSignIfNeeded()
     }
 
     func currentDState(_ time: TimeInterval) -> DState {
@@ -1048,7 +1104,9 @@ final class PetView: NSView, NSMenuDelegate {
         menu.addItem(sizeItem)
 
         let skinMenu = NSMenu()
-        for (label, key) in [("大肥鱼 · 18 状态", "dafeiyu"), ("经典三视图", "classic")] {
+        for (label, key) in [("大肥鱼 · 18 状态", "dafeiyu"),
+                            ("bigfish · 图集动画", "bigfish"),
+                            ("经典三视图", "classic")] {
             addCheck(skinMenu, label, cfg.skin == key, #selector(menuSetSkin(_:)), key)
         }
         let skinItem = NSMenuItem(title: "皮肤", action: nil, keyEquivalent: "")
@@ -1272,7 +1330,9 @@ final class PetView: NSView, NSMenuDelegate {
         cfg.save()
         skin = s
         applySize(cfg.size)
-        if s == .dafeiyu {
+        if s == .bigfish {
+            say("bigfish 图集模式")
+        } else if s == .dafeiyu {
             stateOverride = .wave
             overrideUntil = now + 1.6
             speak("greet")

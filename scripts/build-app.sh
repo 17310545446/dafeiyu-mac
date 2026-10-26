@@ -16,7 +16,7 @@ swift build -c release --triple x86_64-apple-macosx13.0 || echo "(x86_64 交叉�
 
 APP="${DIST}/${APP_NAME}.app"
 rm -rf "$APP" "${DIST:?}/${APP_NAME}-${VERSION}-macos.zip" "${DIST:?}/${APP_NAME}-${VERSION}.dmg"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/sprites" "$APP/Contents/Resources/dafeiyu"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/sprites" "$APP/Contents/Resources/dafeiyu" "$APP/Contents/Resources/bigfish"
 
 if [ -f "$X86_BIN" ]; then
   echo "==> lipo 合并 Universal"
@@ -27,6 +27,9 @@ fi
 cp Resources/sprites/*.png "$APP/Contents/Resources/sprites/"
 if [ -d Resources/dafeiyu ]; then
   cp -R Resources/dafeiyu/sprites Resources/dafeiyu/voice Resources/dafeiyu/sfx Resources/dafeiyu/bgm "$APP/Contents/Resources/dafeiyu/"
+fi
+if [ -d Resources/bigfish ]; then
+  cp Resources/bigfish/*.png "$APP/Contents/Resources/bigfish/"
 fi
 
 # 图标

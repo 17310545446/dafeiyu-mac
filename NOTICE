@@ -19,3 +19,10 @@
 - 台词文本(该仓库 `lib/client.js` 中的 LINES 表)
 
 本仓库只做 macOS 原生渲染与状态机接线,未修改素材内容。
+
+## bigfish 图集动画皮肤
+
+- 图集 `bigfish-quiet / motions / signs / atlas` 来自 [gosomea/dsh-bigfish](https://github.com/gosomea/dsh-bigfish)(MIT),
+  素材来源说明见其 `docs/asset-provenance.md`
+- 动作帧表取自该仓库 `packs/classic/manifest.json`
+- 本项目只做 4 列网格切帧与关键帧播放,未修改图集内容

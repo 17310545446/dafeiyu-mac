@@ -159,7 +159,12 @@ if CommandLine.arguments.contains("--shot") {
     log("shot: start")
     let lib = SpriteLibrary(dir: SpriteLibrary.resourceDir())
     log("shot: spriteDir=\(SpriteLibrary.resourceDir().path)")
-    let cfg = Config.load()
+    var cfg = Config.load()
+    if let i = CommandLine.arguments.firstIndex(of: "--shot"),
+       CommandLine.arguments.count > i + 1,
+       CommandLine.arguments[i + 1] == "bigfish" {
+        cfg.skin = "bigfish"
+    }
     log("shot: cfg ok size=\(cfg.size)")
     let skin = PetView.Skin(rawValue: cfg.skin) ?? .dafeiyu
     let view = PetView(lib: lib, cfg: cfg, spriteH: PetView.displayHeight(skin: skin, size: cfg.size))
