@@ -24,10 +24,15 @@ final class AudioManager {
         set { var c = Config.load(); c.bgmEnabled = newValue; c.save(); newValue ? startBGM() : stopBGM() }
     }
 
+    var muted: Bool {
+        get { Config.load().muted }
+        set { var c = Config.load(); c.muted = newValue; c.save() }
+    }
+
     /// 播放语音,返回时长(秒);失败返回 0。
     @discardableResult
     func playVoice(_ id: String) -> TimeInterval {
-        guard voiceEnabled else { return 0 }
+        guard voiceEnabled, !Config.load().muted else { return 0 }
         let url = dir.appendingPathComponent("voice/\(id).mp3")
         guard let p = try? AVAudioPlayer(contentsOf: url) else { return 0 }
         voicePlayer?.stop()
@@ -43,7 +48,7 @@ final class AudioManager {
     }
 
     func playSfx(_ name: String) {
-        guard sfxEnabled else { return }
+        guard sfxEnabled, !Config.load().muted else { return }
         let url = dir.appendingPathComponent("sfx/\(name).mp3")
         guard let p = try? AVAudioPlayer(contentsOf: url) else { return }
         sfxPlayer?.stop()
@@ -52,7 +57,7 @@ final class AudioManager {
     }
 
     func startBGM() {
-        guard bgmPlayer == nil else { return }
+        guard bgmPlayer == nil, !Config.load().muted else { return }
         let url = dir.appendingPathComponent("bgm/dafeiyu.mp3")
         guard let p = try? AVAudioPlayer(contentsOf: url) else { return }
         p.numberOfLoops = -1

@@ -20,6 +20,7 @@ struct Config: Codable {
     var sfxEnabled: Bool = true
     var bgmEnabled: Bool = false
     var statusFeedback: Bool = true
+    var muted: Bool = false
 
     init() {}
 
@@ -41,6 +42,7 @@ struct Config: Codable {
         sfxEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .sfxEnabled)) ?? true
         bgmEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .bgmEnabled)) ?? false
         statusFeedback = (try? c.decodeIfPresent(Bool.self, forKey: .statusFeedback)) ?? true
+        muted = (try? c.decodeIfPresent(Bool.self, forKey: .muted)) ?? false
     }
 
     static var supportDir: URL {

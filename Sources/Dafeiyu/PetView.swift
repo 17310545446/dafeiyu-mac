@@ -1113,6 +1113,8 @@ final class PetView: NSView, NSMenuDelegate {
         skinItem.submenu = skinMenu
         menu.addItem(skinItem)
 
+        addCheck(menu, "静音(全部声音)", cfg.muted, #selector(menuToggleMute))
+
         let audioMenu = NSMenu()
         addCheck(audioMenu, "语音", cfg.voiceEnabled, #selector(menuToggleVoice))
         addCheck(audioMenu, "音效", cfg.sfxEnabled, #selector(menuToggleSfx))
@@ -1350,6 +1352,19 @@ final class PetView: NSView, NSMenuDelegate {
         ]
         let label = zh[name] ?? name
         return currentStatus.detail.isEmpty ? label : "\(label) · \(currentStatus.detail)"
+    }
+
+    @objc func menuToggleMute() {
+        cfg.muted.toggle()
+        cfg.save()
+        if cfg.muted {
+            AudioManager.shared.stopVoice()
+            AudioManager.shared.stopBGM()
+            say("静音了,世界清净")
+        } else {
+            AudioManager.shared.applyBGMPreference()
+            say("声音回来了")
+        }
     }
 
     @objc func menuToggleStatus() {
