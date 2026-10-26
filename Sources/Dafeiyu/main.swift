@@ -17,7 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         log("didFinishLaunching")
         let cfg = Config.load()
         let lib = SpriteLibrary(dir: SpriteLibrary.resourceDir())
-        let height = Config.spriteHeight(for: cfg.size)
+        let skin = PetView.Skin(rawValue: cfg.skin) ?? .dafeiyu
+        let height = PetView.displayHeight(skin: skin, size: cfg.size)
 
         pet = PetView(lib: lib, cfg: cfg, spriteH: height)
 
@@ -49,6 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         log("ordered front visible=\(panel.isVisible) frame=\(panel.frame)")
         pet.start()
         pet.greet()
+        AudioManager.shared.applyBGMPreference()
 
         let chat = ChatController()
         chat.pet = pet
@@ -152,9 +154,17 @@ if CommandLine.arguments.contains("--shot") {
     log("shot: spriteDir=\(SpriteLibrary.resourceDir().path)")
     let cfg = Config.load()
     log("shot: cfg ok size=\(cfg.size)")
-    let view = PetView(lib: lib, cfg: cfg, spriteH: Config.spriteHeight(for: cfg.size))
+    let skin = PetView.Skin(rawValue: cfg.skin) ?? .dafeiyu
+    let view = PetView(lib: lib, cfg: cfg, spriteH: PetView.displayHeight(skin: skin, size: cfg.size))
     log("shot: view \(view.bounds)")
-    view.say("我是大肥鱼,今天也在摸鱼。")
+    if let i = CommandLine.arguments.firstIndex(of: "--shot"),
+       CommandLine.arguments.count > i + 1,
+       let st = DState(rawValue: CommandLine.arguments[i + 1]) {
+        view.stateOverride = st
+        view.overrideUntil = .greatestFiniteMagnitude
+    } else {
+        view.say("我是大肥鱼，今天也在摸鱼。")
+    }
     log("shot: said")
     let size = view.bounds.size
     let W = Int(size.width * 2), H = Int(size.height * 2)

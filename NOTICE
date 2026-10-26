@@ -9,3 +9,13 @@
 本项目仅做 **macOS 平台的原生(Swift / AppKit)重写**,未改动或重新分发上述素材的原始内容之外的授权条款。上游素材的版权归原作者所有,详见 `LICENSE`。
 
 「鲸鱼娘 / 大肥鱼」是基于 DeepSeek 标识的社区二创形象。本项目**与 DeepSeek(杭州深度求索)无任何关联**,不是官方产品,不提供任何官方支持;仅供个人娱乐使用,请勿用于商业用途。
+
+## 女儿版皮肤(dafeiyu)
+
+以下素材与台词文本来自 [bauerelizabeth07139/dsh-pet-dafeiyu](https://github.com/bauerelizabeth07139/dsh-pet-dafeiyu),MIT License:
+
+- 18 张状态立绘(`assets/sprites/`)
+- 49 段中文语音(`assets/voice/`)、8 个音效(`assets/sfx/`)、1 段 BGM(`assets/bgm/`)
+- 台词文本(该仓库 `lib/client.js` 中的 LINES 表)
+
+本仓库只做 macOS 原生渲染与状态机接线,未修改素材内容。

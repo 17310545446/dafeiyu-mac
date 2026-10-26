@@ -15,6 +15,10 @@ struct Config: Codable {
     var model: String = "deepseek-chat"
     var city: String = ""
     var lowBalanceThreshold: Double = 20
+    var skin: String = "dafeiyu"
+    var voiceEnabled: Bool = true
+    var sfxEnabled: Bool = true
+    var bgmEnabled: Bool = false
 
     init() {}
 
@@ -31,6 +35,10 @@ struct Config: Codable {
         model = (try? c.decodeIfPresent(String.self, forKey: .model)) ?? "deepseek-chat"
         city = (try? c.decodeIfPresent(String.self, forKey: .city)) ?? ""
         lowBalanceThreshold = (try? c.decodeIfPresent(Double.self, forKey: .lowBalanceThreshold)) ?? 20
+        skin = (try? c.decodeIfPresent(String.self, forKey: .skin)) ?? "dafeiyu"
+        voiceEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .voiceEnabled)) ?? true
+        sfxEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .sfxEnabled)) ?? true
+        bgmEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .bgmEnabled)) ?? false
     }
 
     static var supportDir: URL {

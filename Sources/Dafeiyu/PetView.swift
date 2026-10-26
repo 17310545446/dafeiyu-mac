@@ -14,6 +14,7 @@ final class PetView: NSView, NSMenuDelegate {
     static let agentLabel = "io.github.dafeiyu.mac"
 
     enum Mode: String { case wander, follow, still }
+    enum Skin: String { case classic, dafeiyu }
     enum Dir { case up, down, left, right }
 
     let lib: SpriteLibrary
@@ -79,17 +80,38 @@ final class PetView: NSView, NSMenuDelegate {
         return bar
     }()
     var chatPaused = false
+    var skin: Skin = .dafeiyu
+    var stateOverride: DState?
+    var overrideUntil: TimeInterval = 0
+    var blinkUntil: TimeInterval = 0
+    var nextBlinkAt: TimeInterval = 0
+    var voiceUntil: TimeInterval = 0
+    var sleeping = false
+    var lastInteract: TimeInterval = 0
+    var pokeCount = 0
+    var pokeStartedAt: TimeInterval = 0
+    var walkPhase: CGFloat = 0
     let monitor = SystemMonitor()
     var lastMonitorAt: TimeInterval = 0
 
     var now: TimeInterval { Date().timeIntervalSince(startedAt) }
 
+    static func displayHeight(skin: Skin, size: Double) -> Int {
+        switch skin {
+        case .classic: return Config.spriteHeight(for: size)
+        case .dafeiyu: return max(90, Int((620.0 * size * 0.5).rounded()))
+        }
+    }
+
     init(lib: SpriteLibrary, cfg: Config, spriteH: Int) {
         self.lib = lib
         self.cfg = cfg
         self.spriteH = spriteH
+        self.skin = Skin(rawValue: cfg.skin) ?? .dafeiyu
         let mx = CGFloat(spriteH) * 0.062 + 6
-        self.winW = lib.maxWidth(height: spriteH) + mx * 2
+        self.winW = self.skin == .dafeiyu
+            ? CGFloat(spriteH) * (503.0 / 620.0) + mx * 2
+            : lib.maxWidth(height: spriteH) + mx * 2
         self.winH = CGFloat(spriteH) + PetView.bubbleH + PetView.margin * 2 + 10
         super.init(frame: NSRect(x: 0, y: 0, width: winW, height: winH))
         self.mode = Mode(rawValue: cfg.mode) ?? .still
@@ -126,6 +148,17 @@ final class PetView: NSView, NSMenuDelegate {
         guard let panel else { return }
 
         let time = now
+
+        if skin == .dafeiyu {
+            if time >= nextBlinkAt {
+                blinkUntil = time + 0.12
+                nextBlinkAt = time + Double.random(in: 3...7)
+            }
+            if !sleeping, time - lastInteract > 180, target == nil, !dragging, !chatPaused {
+                sleeping = true
+            }
+            if target != nil { walkPhase += curSpeed * CGFloat(PetView.tick) / 45 }
+        }
 
         switch mode {
         case .follow:
@@ -210,6 +243,22 @@ final class PetView: NSView, NSMenuDelegate {
 
     /// 待机动作调度:大部分时间什么都不做,偶尔看看/想想/溜达一会儿。
     func performRandomAction(_ time: TimeInterval) {
+        if skin == .dafeiyu, let act = DafeiyuSkin.idleActs.randomElement() {
+            stateOverride = act.pose
+            overrideUntil = time + act.seconds
+            if let text = DafeiyuSkin.shared.line(act.line) {
+                let dur = AudioManager.shared.playVoice(act.line)
+                bubbleText = text
+                bubbleInner = false
+                bubbleUntil = time + max(2.4, dur)
+                voiceUntil = time + max(0.6, dur)
+                lastLine = text
+            }
+            if let sfx = act.sfx { AudioManager.shared.playSfx(sfx) }
+            nextActionAt = time + act.seconds + Double.random(in: 4...10)
+            log("action: dafeiyu \(act.pose.rawValue)")
+            return
+        }
         nextActionAt = time + Double.random(in: 7...16)
         let r = Double.random(in: 0...1)
         switch r {
@@ -313,7 +362,36 @@ final class PetView: NSView, NSMenuDelegate {
     }
 
     func greet() {
+        lastInteract = now
+        if skin == .dafeiyu {
+            stateOverride = .wave
+            overrideUntil = now + 2.2
+            speak("greet")
+            return
+        }
         say(contextualLine() ?? pick(Lines.idle))
+    }
+
+    // MARK: dafeiyu 语音
+
+    func speak(_ group: String) {
+        guard skin == .dafeiyu,
+              let id = DafeiyuSkin.shared.pickVoice(group),
+              let text = DafeiyuSkin.shared.line(id) else { return }
+        speakLine(id, text: text)
+    }
+
+    func speakLine(_ id: String, text: String? = nil) {
+        let line = text ?? DafeiyuSkin.shared.line(id) ?? ""
+        guard !line.isEmpty else { return }
+        let dur = AudioManager.shared.playVoice(id)
+        bubbleText = line
+        bubbleInner = false
+        bubbleUntil = now + max(2.4, dur)
+        voiceUntil = now + max(0.6, dur)
+        lastLine = line
+        lastInteract = now
+        needsDisplay = true
     }
 
     // MARK: 说话
@@ -383,10 +461,12 @@ final class PetView: NSView, NSMenuDelegate {
 
     func applySize(_ mult: Double) {
         guard let panel else { return }
-        let newH = Config.spriteHeight(for: mult)
+        let newH = PetView.displayHeight(skin: skin, size: mult)
         spriteH = newH
         let mx = CGFloat(newH) * 0.062 + 6
-        winW = lib.maxWidth(height: newH) + mx * 2
+        winW = skin == .dafeiyu
+            ? CGFloat(newH) * (503.0 / 620.0) + mx * 2
+            : lib.maxWidth(height: newH) + mx * 2
         winH = CGFloat(newH) + PetView.bubbleH + PetView.margin * 2 + 10
         let old = panel.frame
         let origin = NSPoint(x: old.midX - winW / 2, y: old.minY)
@@ -407,6 +487,11 @@ final class PetView: NSView, NSMenuDelegate {
 
         let time = now
         if !bubbleText.isEmpty && time < bubbleUntil { drawBubble() }
+
+        if skin == .dafeiyu {
+            drawDafeiyu(ctx, time)
+            return
+        }
 
         let walking = target != nil && !dragging
         let sway: CGFloat = walking
@@ -450,6 +535,55 @@ final class PetView: NSView, NSMenuDelegate {
         } else {
             drawOne(dir, facing, alpha: 1.0)
         }
+    }
+
+    func currentDState(_ time: TimeInterval) -> DState {
+        if let s = stateOverride, time < overrideUntil { return s }
+        if dragging { return .surprise }
+        if time < voiceUntil { return .talk }
+        if sleeping { return .sleep }
+        if target != nil {
+            switch Int(walkPhase) % 4 {
+            case 0: return .walk1
+            case 1: return .walkpass
+            case 2: return .walk2
+            default: return .walkpass
+            }
+        }
+        if time < blinkUntil { return .blink }
+        return .idle
+    }
+
+    func drawDafeiyu(_ ctx: CGContext, _ time: TimeInterval) {
+        let state = currentDState(time)
+        guard let img = DafeiyuSkin.shared.image(state) else { return }
+
+        let walking = target != nil && !dragging
+        let sway: CGFloat = walking
+            ? fsin(time * 9.0) * 2.2
+            : (action == .sway ? fsin(time * 7.0) * 4.5 : 0)
+        let bob: CGFloat = walking ? -abs(fsin(time * 4.5)) * 6 : 0
+        let breath = 1.0 + 0.006 * fsin(time * 1.6)
+        let jump: CGFloat = jumpT > 0 ? -abs(fsin(jumpT * .pi)) * 14 * jumpT : 0
+
+        let h = CGFloat(spriteH) * breath
+        let w = h * (img.size.width / img.size.height)
+
+        let wantLeft: Bool
+        switch dir {
+        case .left: wantLeft = true
+        case .right: wantLeft = false
+        case .up, .down: wantLeft = true
+        }
+        let flip = wantLeft != DafeiyuSkin.shared.facesLeft(state)
+
+        ctx.saveGState()
+        ctx.translateBy(x: bounds.midX, y: PetView.margin)
+        ctx.rotate(by: sway)
+        if flip { ctx.scaleBy(x: -1, y: 1) }
+        img.draw(in: CGRect(x: -w / 2, y: jump + bob, width: w, height: h),
+                 from: .zero, operation: .sourceOver, fraction: 1)
+        ctx.restoreGState()
     }
 
     func drawBubble() {
@@ -507,6 +641,13 @@ final class PetView: NSView, NSMenuDelegate {
     // MARK: 鼠标
 
     override func mouseDown(with event: NSEvent) {
+        lastInteract = now
+        if sleeping {
+            sleeping = false
+            speakLine("wake1")
+            stateOverride = .surprise
+            overrideUntil = now + 1.2
+        }
         if event.clickCount == 2 {
             suppressClick = true
             if let f = panel?.frame { feedBar.show(above: f) }
@@ -536,13 +677,35 @@ final class PetView: NSView, NSMenuDelegate {
             setDir(.down, facing: 1)
             target = nil
             restUntil = now + Double.random(in: 6...14)
-            if Bool.random() { say(pick(Lines.drag)) }
+            if skin == .dafeiyu {
+                stateOverride = .surprise
+                overrideUntil = now + 0.9
+                speak("drag")
+            } else if Bool.random() {
+                say(pick(Lines.drag))
+            }
             if let f = panel?.frame { homeCenter = NSPoint(x: f.midX, y: f.midY) }
             nextActionAt = now + 2
             savePos()
         } else {
-            if CGFloat.random(in: 0...1) < 0.7 { jumpT = 1.0 }
-            if CGFloat.random(in: 0...1) < 0.6 { say(pick(Lines.react)) }
+            if skin == .dafeiyu {
+                let t = now
+                if t - pokeStartedAt > 2.0 { pokeCount = 0; pokeStartedAt = t }
+                pokeCount += 1
+                if pokeCount >= 3 {
+                    pokeCount = 0
+                    stateOverride = .angry
+                    overrideUntil = t + 1.8
+                    speakLine("angry1")
+                } else {
+                    stateOverride = .happy
+                    overrideUntil = t + 0.9
+                    speak("click")
+                }
+            } else {
+                if CGFloat.random(in: 0...1) < 0.7 { jumpT = 1.0 }
+                if CGFloat.random(in: 0...1) < 0.6 { say(pick(Lines.react)) }
+            }
             if let f = panel?.frame { functionBar.showAutoHide(above: f) }
         }
         needsDisplay = true
@@ -560,6 +723,14 @@ final class PetView: NSView, NSMenuDelegate {
 
     func feed(_ emoji: String) {
         jumpT = 0.6
+        lastInteract = now
+        if skin == .dafeiyu {
+            stateOverride = .eat
+            overrideUntil = now + 3.2
+            speakLine("eat1")
+            AudioManager.shared.playSfx("clang")
+            return
+        }
         let pool = Lines.foodLines[emoji] ?? ["好吃！"]
         say(pick(pool))
     }
@@ -613,6 +784,22 @@ final class PetView: NSView, NSMenuDelegate {
         let sizeItem = NSMenuItem(title: "大小", action: nil, keyEquivalent: "")
         sizeItem.submenu = sizeMenu
         menu.addItem(sizeItem)
+
+        let skinMenu = NSMenu()
+        for (label, key) in [("大肥鱼 · 18 状态", "dafeiyu"), ("经典三视图", "classic")] {
+            addCheck(skinMenu, label, cfg.skin == key, #selector(menuSetSkin(_:)), key)
+        }
+        let skinItem = NSMenuItem(title: "皮肤", action: nil, keyEquivalent: "")
+        skinItem.submenu = skinMenu
+        menu.addItem(skinItem)
+
+        let audioMenu = NSMenu()
+        addCheck(audioMenu, "语音", cfg.voiceEnabled, #selector(menuToggleVoice))
+        addCheck(audioMenu, "音效", cfg.sfxEnabled, #selector(menuToggleSfx))
+        addCheck(audioMenu, "背景音乐", cfg.bgmEnabled, #selector(menuToggleBGM))
+        let audioItem = NSMenuItem(title: "声音", action: nil, keyEquivalent: "")
+        audioItem.submenu = audioMenu
+        menu.addItem(audioItem)
 
         menu.addItem(NSMenuItem.separator())
         addCheck(menu, "鼠标穿透(点不到它)", cfg.passthrough, #selector(menuTogglePassthrough))
@@ -802,6 +989,41 @@ final class PetView: NSView, NSMenuDelegate {
                 }
             }
         }
+    }
+
+    @objc func menuSetSkin(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let s = Skin(rawValue: raw) else { return }
+        cfg.skin = raw
+        cfg.save()
+        skin = s
+        applySize(cfg.size)
+        if s == .dafeiyu {
+            stateOverride = .wave
+            overrideUntil = now + 1.6
+            speak("greet")
+        } else {
+            say("换回三视图了")
+        }
+    }
+
+    @objc func menuToggleVoice() {
+        cfg.voiceEnabled.toggle()
+        cfg.save()
+        if !cfg.voiceEnabled { AudioManager.shared.stopVoice() }
+        say(cfg.voiceEnabled ? "语音开了" : "语音关了")
+    }
+
+    @objc func menuToggleSfx() {
+        cfg.sfxEnabled.toggle()
+        cfg.save()
+        say(cfg.sfxEnabled ? "音效开了" : "音效关了")
+    }
+
+    @objc func menuToggleBGM() {
+        cfg.bgmEnabled.toggle()
+        cfg.save()
+        AudioManager.shared.applyBGMPreference()
+        say(cfg.bgmEnabled ? "放首歌" : "先安静一会儿")
     }
 
     @objc func menuSay() {
