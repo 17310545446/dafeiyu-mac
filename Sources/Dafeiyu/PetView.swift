@@ -57,6 +57,27 @@ final class PetView: NSView, NSMenuDelegate {
     var dragStartOrigin: NSPoint = .zero
     var suppressClick = false
     weak var chat: ChatController?
+
+    lazy var functionBar: FunctionBar = {
+        let bar = FunctionBar()
+        bar.onChat = { [weak self] in
+            guard let self, let f = self.panel?.frame else { return }
+            self.chatPill.showAndFocus(above: f)
+        }
+        return bar
+    }()
+
+    lazy var chatPill: ChatPill = {
+        let pill = ChatPill()
+        pill.onSubmit = { [weak self] text in self?.chat?.quickSend(text) }
+        return pill
+    }()
+
+    lazy var feedBar: FeedBar = {
+        let bar = FeedBar()
+        bar.onPick = { [weak self] emoji in self?.feed(emoji) }
+        return bar
+    }()
     var chatPaused = false
     let monitor = SystemMonitor()
     var lastMonitorAt: TimeInterval = 0
@@ -488,7 +509,7 @@ final class PetView: NSView, NSMenuDelegate {
     override func mouseDown(with event: NSEvent) {
         if event.clickCount == 2 {
             suppressClick = true
-            showFoodMenu()
+            if let f = panel?.frame { feedBar.show(above: f) }
             return
         }
         suppressClick = false
@@ -522,6 +543,7 @@ final class PetView: NSView, NSMenuDelegate {
         } else {
             if CGFloat.random(in: 0...1) < 0.7 { jumpT = 1.0 }
             if CGFloat.random(in: 0...1) < 0.6 { say(pick(Lines.react)) }
+            if let f = panel?.frame { functionBar.showAutoHide(above: f) }
         }
         needsDisplay = true
     }
@@ -536,23 +558,19 @@ final class PetView: NSView, NSMenuDelegate {
         _ = point
     }
 
-    func showFoodMenu() {
-        let menu = NSMenu()
-        menu.autoenablesItems = false
-        for (emoji, name) in Lines.foods {
-            let item = NSMenuItem(title: "\(emoji)  \(name)", action: #selector(pickFood(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = emoji
-            menu.addItem(item)
-        }
-        menu.popUp(positioning: nil, at: NSPoint(x: bounds.midX, y: bounds.midY), in: self)
-    }
-
-    @objc func pickFood(_ sender: NSMenuItem) {
-        guard let emoji = sender.representedObject as? String else { return }
+    func feed(_ emoji: String) {
         jumpT = 0.6
         let pool = Lines.foodLines[emoji] ?? ["好吃！"]
         say(pick(pool))
+    }
+
+    func toggleVisible() {
+        guard let p = panel else { return }
+        if p.isVisible {
+            p.orderOut(nil)
+        } else {
+            p.orderFrontRegardless()
+        }
     }
 
     // MARK: 菜单

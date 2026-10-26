@@ -247,6 +247,32 @@ final class ChatController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         }
     }
 
+    /// 一行胶囊发送:回复直接冒泡(超过 28 字截断),不进大面板。
+    func quickSend(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        history.append(.init(role: "user", content: trimmed))
+        trimHistory()
+
+        let cfg = Config.load()
+        let key = Keychain.read(account: "api-key") ?? ""
+        LLMClient.chat(baseURL: cfg.baseURL, model: cfg.model, apiKey: key, history: history) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch result {
+                case .success(let reply):
+                    self.history.append(.init(role: "assistant", content: reply))
+                    self.trimHistory()
+                    let short = reply.count > 28 ? String(reply.prefix(28)) + "…" : reply
+                    self.pet?.say(short)
+                case .failure(let err):
+                    let short = String(err.localizedDescription.prefix(16))
+                    self.pet?.say("API错误:\(short)")
+                }
+            }
+        }
+    }
+
     private func trimHistory() {
         if history.count > 40 { history.removeFirst(history.count - 40) }
     }

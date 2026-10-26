@@ -90,6 +90,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                                name: NSApplication.didChangeScreenParametersNotification, object: nil)
     }
 
+    @objc func statusClicked(_ sender: Any?) {
+        guard let event = NSApp.currentEvent else { return }
+        if event.type == .rightMouseUp {
+            guard let button = statusItem.button else { return }
+            let menu = pet.buildMenu()
+            menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 4), in: button)
+        } else {
+            pet.toggleVisible()
+        }
+    }
+
     @objc func saveState() { pet.savePos() }
 
     @objc func screenChanged() {
@@ -111,9 +122,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             button.toolTip = "大肥鱼桌宠"
         }
-        let menu = NSMenu()
-        menu.delegate = pet
-        statusItem.menu = menu
+        if let button = statusItem.button {
+            button.target = self
+            button.action = #selector(statusClicked(_:))
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        }
     }
 }
 
