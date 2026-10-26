@@ -233,9 +233,12 @@ final class PetView: NSView, NSMenuDelegate {
 
     func savePos() {
         guard let f = panel?.frame else { return }
-        cfg.x = Double(f.minX)
-        cfg.y = Double(f.minY)
-        cfg.save()
+        // 先读磁盘再合并,避免把外部编辑过的配置(城市/阈值等)用内存旧值覆盖
+        var fresh = Config.load()
+        fresh.x = Double(f.minX)
+        fresh.y = Double(f.minY)
+        fresh.save()
+        cfg = fresh
     }
 
     // MARK: 方向 / 尺寸
