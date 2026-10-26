@@ -23,6 +23,8 @@ DeepSeek 社区二创形象「鲸鱼娘 · 大肥鱼」的 **macOS 原生桌面�
 - **聊天**:按 **⌃⌥K** 全局热键,或右键/菜单栏「聊天…」打开对话面板,直连本机 LiteLLM 网关或任何 OpenAI 兼容端点;API Key 存 **Keychain**,不落明文
 - **系统监控**:每 10 秒采一次 CPU / 内存,爆表时会吐槽你(CPU ≥90%、内存 ≥93%)
 - **天气**:右键「看天气」拉 wttr.in(不用 Key),中文描述内置映射;城市可在设置里填,留空按 IP 定位
+- **DeepSeek 余额**:右键「DeepSeek 余额」直查官方 `/user/balance`;Key 优先取 Keychain,没填则读本机网关 `.env`(不落盘、不外传)
+- **用量 / 网关快捷入口**:「打开用量页…」跳官方控制台,「打开网关面板…」跳本机 LiteLLM UI
 - **鼠标穿透**:设成点不到,从菜单栏图标解除
 - **窗口置顶 / 开机自启 / 回到屏幕内 / 隐藏**:右键菜单 & 菜单栏图标双入口
 - **多屏感知**:跨屏走动、换屏自动收回屏幕内
@@ -53,8 +55,13 @@ xattr -dr com.apple.quarantine /Applications/Dafeiyu.app
 | **⌃⌥K**(全局) | 随时呼出聊天面板 |
 | 右键 / 菜单栏 → 聊天… | 同上,回车发送 |
 | 右键 → 看天气 | 报当前气温 / 天气 / 湿度 / 风速 |
+| 右键 → DeepSeek 余额 | 气泡报余额(有赠金会单独标) |
+| 右键 → 打开用量页… | 跳 platform.deepseek.com/usage |
+| 右键 → 打开网关面板… | 跳 127.0.0.1:4000/ui |
 | 右键 → API 设置… | 改 Base URL / 模型 / API Key / 城市 |
 | 菜单栏图标 | 同一个菜单;隐藏后从这里叫回来 |
+
+> **用量**:DeepSeek 官方只开放了"余额"接口,没有用量 API,所以用量只能从「打开用量页…」去控制台看。这是官方限制,不是没做。
 
 配置写在 `~/Library/Application Support/Dafeiyu/config.json`,API Key 单独存 Keychain(service `io.github.dafeiyu.mac`)。
 
@@ -81,6 +88,7 @@ swift build -c release          # 或 swift run 直接跑
 ./dist/Dafeiyu.app/Contents/MacOS/Dafeiyu --shot            # 离屏渲染一张 PNG
 ./dist/Dafeiyu.app/Contents/MacOS/Dafeiyu --chat-test "你好"   # 命令行验证网关连通
 ./dist/Dafeiyu.app/Contents/MacOS/Dafeiyu --weather-test 汕头   # 命令行验证天气
+./dist/Dafeiyu.app/Contents/MacOS/Dafeiyu --balance-test       # 命令行查 DeepSeek 余额
 ```
 
 ## 与 Windows 原版的差异

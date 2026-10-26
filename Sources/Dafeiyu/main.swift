@@ -152,6 +152,25 @@ if CommandLine.arguments.contains("--shot") {
 
 let app = NSApplication.shared
 
+if CommandLine.arguments.contains("--balance-test") {
+    guard let found = KeyStore.deepSeekKey() else {
+        print("ERR: 没找到 DeepSeek Key")
+        exit(1)
+    }
+    let sem = DispatchSemaphore(value: 0)
+    DeepSeekClient.fetch(key: found.key) { result in
+        switch result {
+        case .success(let infos):
+            print("OK(src=\(found.source)): " + infos.map { $0.speech }.joined(separator: " | "))
+        case .failure(let err):
+            print("ERR: \(err.localizedDescription)")
+        }
+        sem.signal()
+    }
+    sem.wait()
+    exit(0)
+}
+
 if let widx = CommandLine.arguments.firstIndex(of: "--weather-test") {
     let city = CommandLine.arguments.count > widx + 1 ? CommandLine.arguments[widx + 1] : "汕头"
     let sem = DispatchSemaphore(value: 0)

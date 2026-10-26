@@ -505,6 +505,18 @@ final class PetView: NSView, NSMenuDelegate {
         settingsItem.target = self
         menu.addItem(settingsItem)
 
+        let balanceItem = NSMenuItem(title: "DeepSeek 余额", action: #selector(menuBalance), keyEquivalent: "")
+        balanceItem.target = self
+        menu.addItem(balanceItem)
+
+        let usageItem = NSMenuItem(title: "打开用量页…", action: #selector(menuOpenUsagePage), keyEquivalent: "")
+        usageItem.target = self
+        menu.addItem(usageItem)
+
+        let gatewayItem = NSMenuItem(title: "打开网关面板…", action: #selector(menuOpenGateway), keyEquivalent: "")
+        gatewayItem.target = self
+        menu.addItem(gatewayItem)
+
         let weatherItem = NSMenuItem(title: "看天气", action: #selector(menuWeather), keyEquivalent: "")
         weatherItem.target = self
         menu.addItem(weatherItem)
@@ -570,7 +582,7 @@ final class PetView: NSView, NSMenuDelegate {
         alert.messageText = "API 设置"
         alert.informativeText = "默认指向本机 LiteLLM 网关(http://127.0.0.1:4000/v1)。网关不需要鉴权时 Key 留空。"
 
-        let stack = NSStackView(frame: NSRect(x: 0, y: 0, width: 340, height: 132))
+        let stack = NSStackView(frame: NSRect(x: 0, y: 0, width: 340, height: 164))
         stack.orientation = .vertical
         stack.spacing = 8
 
@@ -579,8 +591,11 @@ final class PetView: NSView, NSMenuDelegate {
         let keyField = NSSecureTextField(string: Keychain.read(account: "api-key") ?? "")
         let cityField = NSTextField(string: cfg.city)
         cityField.placeholderString = "留空=按 IP 自动定位"
+        let dsKeyField = NSSecureTextField(string: Keychain.read(account: "deepseek-key") ?? "")
+        dsKeyField.placeholderString = "留空=读本机网关 .env"
 
-        for (label, field) in [("Base URL", urlField), ("模型", modelField), ("API Key", keyField), ("城市", cityField)] {
+        for (label, field) in [("Base URL", urlField), ("模型", modelField), ("API Key", keyField),
+                               ("DS Key", dsKeyField), ("城市", cityField)] {
             let row = NSStackView()
             row.orientation = .horizontal
             row.spacing = 8
@@ -605,7 +620,43 @@ final class PetView: NSView, NSMenuDelegate {
             newCfg.save()
             self.cfg = newCfg
             Keychain.save(account: "api-key", value: keyField.stringValue)
+            Keychain.save(account: "deepseek-key", value: dsKeyField.stringValue)
             say("设置好了,来聊两句?")
+        }
+    }
+
+    @objc func menuBalance() {
+        guard let found = KeyStore.deepSeekKey() else {
+            say("没找到 DeepSeek Key,去「API 设置」填一个")
+            return
+        }
+        say("查余额…")
+        DeepSeekClient.fetch(key: found.key) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch result {
+                case .success(let infos) where !infos.isEmpty:
+                    self.say(infos[0].speech)
+                case .success:
+                    self.say("接口没返回余额信息")
+                case .failure:
+                    self.say("查余额失败,key 过期还是网络不通?")
+                }
+            }
+        }
+    }
+
+    @objc func menuOpenUsagePage() {
+        if let url = URL(string: "https://platform.deepseek.com/usage") {
+            NSWorkspace.shared.open(url)
+            say("用量页给你打开了")
+        }
+    }
+
+    @objc func menuOpenGateway() {
+        if let url = URL(string: "http://127.0.0.1:4000/ui") {
+            NSWorkspace.shared.open(url)
+            say("网关面板在这儿")
         }
     }
 
