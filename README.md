@@ -11,6 +11,34 @@ DeepSeek 社区二创形象「鲸鱼娘 · 大肥鱼」的 **macOS 原生桌面�
 
 [![Release](https://img.shields.io/github/v/release/17310545446/dafeiyu-mac)](https://github.com/17310545446/dafeiyu-mac/releases)
 [![Platform](https://img.shields.io/badge/macOS-13%2B-blue)](https://github.com/17310545446/dafeiyu-mac)
+![不依赖 DSH](https://img.shields.io/badge/%E4%B8%8D%E4%BE%9D%E8%B5%96%20DSH-%E7%8B%AC%E7%AB%8B%E5%8E%9F%E7%94%9F%20.app-brightgreen)
+![DeepSeek](https://img.shields.io/badge/DeepSeek-%E5%8F%AF%E9%85%8D%E7%BD%AE%E7%AB%AF%E7%82%B9-blue)
+
+## 不依赖 DSH,也不是插件
+
+**这是一个独立 .app,双击就能用。** 不需要安装 DeepSeek Harness、不需要 `dsh`、不需要 Node / Python / Electron 运行时。
+
+| | 本项目 | DSH 桌宠插件 |
+|---|---|---|
+| 需要 DSH | ❌ 不需要 | ✅ 必须 |
+| 关掉浏览器 / 退出 DSH | 照常运行 | 宠物直接消失 |
+| 独立窗口 | ✅ 原生 AppKit | ❌ 只能活在页面里 |
+| 体积 | 9.2 MB(含 7.4MB 素材) | 视插件而定 |
+| 能否感知 DSH 会话任务 | ❌ 拿不到(这是取舍) | ✅ 能 |
+
+代价说明白:因为我们不接 DSH,所以**不知道你在跑什么任务、也没有"跟着干活换状态"**。换来的是它永远不会因为 DSH 升级、profile 改坏、页面刷新而消失。
+
+## 可配置的 DeepSeek 连接
+
+聊天默认走本机 LiteLLM 网关,也可以指到任何 OpenAI 兼容端点 —— 不绑定 DSH,也不绑定某一家:
+
+| 场景 | Base URL | 模型 |
+|---|---|---|
+| 本机网关(默认) | `http://127.0.0.1:4000/v1` | `deepseek-chat` |
+| DeepSeek 官方 | `https://api.deepseek.com/v1` | `deepseek-chat` |
+| 其他兼容服务 | 任意 `/v1` 端点 | 对应模型名 |
+
+API Key 存 **Keychain**,设置面板里三栏可改:Base URL / 模型 / Key。余额查询直接用 DeepSeek 官方 `/user/balance`。
 
 ![渲染自检图](docs/screenshot-render.png)
 
