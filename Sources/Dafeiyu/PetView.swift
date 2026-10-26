@@ -107,6 +107,11 @@ final class PetView: NSView, NSMenuDelegate {
     var squash: CGFloat = 0
     var particles: [Particle] = []
     var dragSamples: [(t: TimeInterval, x: CGFloat, y: CGFloat)] = []
+
+    // 任务状态
+    let activity = ActivityMonitor()
+    var currentStatus = ActivityMonitor.Status()
+    var lastStatusSpeak: TimeInterval = -999
     let monitor = SystemMonitor()
     var lastMonitorAt: TimeInterval = 0
 
@@ -139,6 +144,8 @@ final class PetView: NSView, NSMenuDelegate {
     // MARK: 生命周期
 
     func start() {
+        activity.onChange = { [weak self] s in self?.applyStatus(s) }
+        activity.start()
         let t = Timer(timeInterval: PetView.tick, repeats: true) { [weak self] _ in self?.tick() }
         RunLoop.main.add(t, forMode: .common)
         timer = t
@@ -170,7 +177,8 @@ final class PetView: NSView, NSMenuDelegate {
                 blinkUntil = time + 0.12
                 nextBlinkAt = time + Double.random(in: 3...7)
             }
-            if !sleeping, time - lastInteract > 180, target == nil, !dragging, !chatPaused {
+            if !sleeping, time - lastInteract > 180, target == nil, !dragging, !chatPaused,
+               cfg.statusFeedback, currentStatus.kind == .none || currentStatus.kind == .idle {
                 sleeping = true
             }
             if target != nil { walkPhase += curSpeed * CGFloat(PetView.tick) / 45 }
@@ -398,6 +406,26 @@ final class PetView: NSView, NSMenuDelegate {
     }
 
     // MARK: dafeiyu 语音
+
+    func applyStatus(_ s: ActivityMonitor.Status) {
+        guard cfg.statusFeedback else { return }
+        currentStatus = s
+        needsDisplay = true
+        guard s.kind != .none, s.kind != .idle, now - lastStatusSpeak > 30 else { return }
+        lastStatusSpeak = now
+        let text: String
+        switch s.kind {
+        case .thinking: text = s.source == "DSH" ? "在想\(s.detail)的活…" : "在想事情…"
+        case .tool: text = "在敲命令"
+        case .building: text = "编译中,别催"
+        case .testing: text = "在跑测试"
+        case .running: text = "手上有点活"
+        case .coding: text = "写代码呢"
+        default: text = ""
+        }
+        if !text.isEmpty { say(text) }
+        log("activity: \(s.kind.rawValue) \(s.detail) [\(s.source)]")
+    }
 
     func speak(_ group: String) {
         guard skin == .dafeiyu,
@@ -654,6 +682,14 @@ final class PetView: NSView, NSMenuDelegate {
 
     func currentDState(_ time: TimeInterval) -> DState {
         if let s = stateOverride, time < overrideUntil { return s }
+        if cfg.statusFeedback {
+            switch currentStatus.kind {
+            case .thinking, .testing: return .think
+            case .tool, .building: return .cheer
+            case .running: return .basin
+            default: break
+            }
+        }
         if falling { return .surprise }
         if dragging { return .surprise }
         if time < voiceUntil { return .talk }
@@ -933,6 +969,11 @@ final class PetView: NSView, NSMenuDelegate {
         audioItem.submenu = audioMenu
         menu.addItem(audioItem)
 
+        let statusLine = NSMenuItem(title: "状态: \(statusText())", action: nil, keyEquivalent: "")
+        statusLine.isEnabled = false
+        menu.addItem(statusLine)
+        addCheck(menu, "任务状态反馈", cfg.statusFeedback, #selector(menuToggleStatus))
+
         menu.addItem(NSMenuItem.separator())
         addCheck(menu, "鼠标穿透(点不到它)", cfg.passthrough, #selector(menuTogglePassthrough))
         addCheck(menu, "窗口置顶", cfg.topmost, #selector(menuToggleTopmost))
@@ -1136,6 +1177,23 @@ final class PetView: NSView, NSMenuDelegate {
         } else {
             say("换回三视图了")
         }
+    }
+
+    func statusText() -> String {
+        let name = currentStatus.kind.rawValue
+        let zh: [String: String] = [
+            "none": "空闲", "thinking": "思考中", "tool": "跑工具", "building": "编译中",
+            "testing": "测试中", "running": "运行任务", "coding": "写代码", "browsing": "浏览",
+            "idle": "没人在",
+        ]
+        let label = zh[name] ?? name
+        return currentStatus.detail.isEmpty ? label : "\(label) · \(currentStatus.detail)"
+    }
+
+    @objc func menuToggleStatus() {
+        cfg.statusFeedback.toggle()
+        cfg.save()
+        say(cfg.statusFeedback ? "开始盯着你干活了" : "那我就不看了")
     }
 
     @objc func menuToggleVoice() {

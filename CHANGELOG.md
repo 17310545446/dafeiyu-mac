@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.11.0 — 2026-10-26
+
+### 新增(任务状态反馈)
+- **DSH 会话只读接入**:读取 `~/.dsh/storages/session_projcache/sessions/*.json`,比对 `steps / llmMs / toolMs` 增量,判断"思考中 / 跑工具";同时拿到会话标题与项目目录
+- **本机推断**:`swiftc / xcodebuild` → 编译中,`pytest / jest` → 测试中,`npm run / vite / tsc` → Node 构建,`git` → Git 操作;再叠加前台 App 与空闲时长
+- **状态映射**:thinking → `think`,tool/building → `cheer`,running → `basin`;每 30 秒最多播报一次
+- **菜单状态行**:显示当前状态 + 项目名,可一键关闭
+- 调试开关:`DAFEIYU_STATUS_SOURCE=process|dsh|auto`
+
+### 说明
+API Key 与任务状态无关;状态来自 DSH 会话数据或本机信号。
+
 ## v0.10.0 — 2026-10-26
 
 ### 新增(P2:物理拖拽)
