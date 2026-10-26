@@ -4,7 +4,7 @@ import Foundation
 // MARK: - 配置
 
 struct Config: Codable {
-    var mode: String = "wander"
+    var mode: String = "still"
     var size: Double = 0.7
     var topmost: Bool = true
     var passthrough: Bool = false
@@ -14,12 +14,13 @@ struct Config: Codable {
     var baseURL: String = "http://127.0.0.1:4000/v1"
     var model: String = "deepseek-chat"
     var city: String = ""
+    var lowBalanceThreshold: Double = 20
 
     init() {}
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        mode = (try? c.decodeIfPresent(String.self, forKey: .mode)) ?? "wander"
+        mode = (try? c.decodeIfPresent(String.self, forKey: .mode)) ?? "still"
         size = (try? c.decodeIfPresent(Double.self, forKey: .size)) ?? 0.7
         topmost = (try? c.decodeIfPresent(Bool.self, forKey: .topmost)) ?? true
         passthrough = (try? c.decodeIfPresent(Bool.self, forKey: .passthrough)) ?? false
@@ -29,6 +30,7 @@ struct Config: Codable {
         baseURL = (try? c.decodeIfPresent(String.self, forKey: .baseURL)) ?? "http://127.0.0.1:4000/v1"
         model = (try? c.decodeIfPresent(String.self, forKey: .model)) ?? "deepseek-chat"
         city = (try? c.decodeIfPresent(String.self, forKey: .city)) ?? ""
+        lowBalanceThreshold = (try? c.decodeIfPresent(Double.self, forKey: .lowBalanceThreshold)) ?? 20
     }
 
     static var supportDir: URL {

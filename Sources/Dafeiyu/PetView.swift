@@ -66,7 +66,7 @@ final class PetView: NSView, NSMenuDelegate {
         self.winW = lib.maxWidth(height: spriteH) + mx * 2
         self.winH = CGFloat(spriteH) + PetView.bubbleH + PetView.margin * 2 + 10
         super.init(frame: NSRect(x: 0, y: 0, width: winW, height: winH))
-        self.mode = Mode(rawValue: cfg.mode) ?? .wander
+        self.mode = Mode(rawValue: cfg.mode) ?? .still
         self.bubbleUntil = 0
     }
 
@@ -582,7 +582,7 @@ final class PetView: NSView, NSMenuDelegate {
         alert.messageText = "API 设置"
         alert.informativeText = "默认指向本机 LiteLLM 网关(http://127.0.0.1:4000/v1)。网关不需要鉴权时 Key 留空。"
 
-        let stack = NSStackView(frame: NSRect(x: 0, y: 0, width: 340, height: 164))
+        let stack = NSStackView(frame: NSRect(x: 0, y: 0, width: 340, height: 196))
         stack.orientation = .vertical
         stack.spacing = 8
 
@@ -593,9 +593,11 @@ final class PetView: NSView, NSMenuDelegate {
         cityField.placeholderString = "留空=按 IP 自动定位"
         let dsKeyField = NSSecureTextField(string: Keychain.read(account: "deepseek-key") ?? "")
         dsKeyField.placeholderString = "留空=读本机网关 .env"
+        let thresholdField = NSTextField(string: String(format: "%.0f", cfg.lowBalanceThreshold))
+        thresholdField.placeholderString = "低于这个金额提醒,0=关闭"
 
         for (label, field) in [("Base URL", urlField), ("模型", modelField), ("API Key", keyField),
-                               ("DS Key", dsKeyField), ("城市", cityField)] {
+                               ("DS Key", dsKeyField), ("城市", cityField), ("余额提醒", thresholdField)] {
             let row = NSStackView()
             row.orientation = .horizontal
             row.spacing = 8
@@ -617,6 +619,7 @@ final class PetView: NSView, NSMenuDelegate {
             newCfg.baseURL = url.isEmpty ? "http://127.0.0.1:4000/v1" : url
             newCfg.model = model.isEmpty ? "deepseek-chat" : model
             newCfg.city = cityField.stringValue.trimmingCharacters(in: .whitespaces)
+            newCfg.lowBalanceThreshold = max(0, Double(thresholdField.stringValue) ?? 20)
             newCfg.save()
             self.cfg = newCfg
             Keychain.save(account: "api-key", value: keyField.stringValue)

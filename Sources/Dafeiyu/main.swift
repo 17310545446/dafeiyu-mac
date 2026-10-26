@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var pet: PetView!
     var statusItem: NSStatusItem!
     var chat: ChatController!
+    var balanceMonitor: BalanceMonitor!
     var hiddenByUser = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -60,6 +61,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         log("hotkey ⌃⌥K register status=\(hkStatus)")
 
         setupStatusItem(icon: lib.icon())
+
+        let monitor = BalanceMonitor()
+        monitor.onUpdate = { [weak self] total in
+            guard let self, let button = self.statusItem.button else { return }
+            let text = total >= 100 ? String(format: "¥%.0f", total) : String(format: "¥%.1f", total)
+            button.title = " " + text
+            log("balance update=\(text)")
+        }
+        monitor.onLowBalance = { [weak self] total, threshold in
+            self?.pet.say(String(format: "余额只剩 ¥%.1f,记得充值", total))
+        }
+        monitor.start()
+        self.balanceMonitor = monitor
 
         if CommandLine.arguments.contains("--open-chat") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
