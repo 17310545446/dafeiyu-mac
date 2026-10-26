@@ -52,6 +52,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pet.greet()
         AudioManager.shared.applyBGMPreference()
 
+        if CommandLine.arguments.contains("--throw-test") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                self?.pet.debugThrow()
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 7) { exit(0) }
+        }
+
         let chat = ChatController()
         chat.pet = pet
         pet.chat = chat

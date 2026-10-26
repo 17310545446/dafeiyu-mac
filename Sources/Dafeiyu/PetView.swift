@@ -91,6 +91,22 @@ final class PetView: NSView, NSMenuDelegate {
     var pokeCount = 0
     var pokeStartedAt: TimeInterval = 0
     var walkPhase: CGFloat = 0
+
+    // 物理拖拽
+    struct Particle {
+        var p: CGPoint
+        var v: CGVector
+        var life: CGFloat
+        var maxLife: CGFloat
+        var size: CGFloat
+        var color: NSColor
+    }
+    var velocity: CGPoint = .zero
+    var falling = false
+    var airRotation: CGFloat = 0
+    var squash: CGFloat = 0
+    var particles: [Particle] = []
+    var dragSamples: [(t: TimeInterval, x: CGFloat, y: CGFloat)] = []
     let monitor = SystemMonitor()
     var lastMonitorAt: TimeInterval = 0
 
@@ -159,6 +175,15 @@ final class PetView: NSView, NSMenuDelegate {
             }
             if target != nil { walkPhase += curSpeed * CGFloat(PetView.tick) / 45 }
         }
+
+        if falling {
+            stepPhysics()
+            needsDisplay = true
+            return
+        }
+        if squash > 0 { squash = max(0, squash - 0.05) }
+        if abs(airRotation) > 0.005 { airRotation *= 0.92 } else { airRotation = 0 }
+        updateParticles()
 
         switch mode {
         case .follow:
@@ -522,7 +547,8 @@ final class PetView: NSView, NSMenuDelegate {
             ctx.saveGState()
             ctx.setAlpha(alpha)
             ctx.translateBy(x: bounds.midX, y: bottom)
-            ctx.rotate(by: sway + actRot)
+            ctx.rotate(by: sway + actRot + airRotation)
+            ctx.scaleBy(x: 1 + 0.18 * squash, y: 1 - 0.22 * squash)
             if f < 0 { ctx.scaleBy(x: -1, y: 1) }
             let rect = CGRect(x: -pw / 2, y: -ph + jump + bob, width: pw, height: ph)
             img.draw(in: rect, from: .zero, operation: .sourceOver, fraction: alpha)
@@ -537,8 +563,98 @@ final class PetView: NSView, NSMenuDelegate {
         }
     }
 
+    // MARK: 物理
+
+    func stepPhysics() {
+        guard let panel else { return }
+        let dt = CGFloat(PetView.tick)
+        let f = panel.frame
+        let geo = screenFrame(containing: NSPoint(x: f.midX, y: f.midY))
+
+        velocity.y -= 2200 * dt                      // 重力
+        var nx = f.minX + velocity.x * dt
+        var ny = f.minY + velocity.y * dt
+
+        if nx < geo.minX { nx = geo.minX; velocity.x = -velocity.x * 0.45 }
+        if nx + f.width > geo.maxX { nx = geo.maxX - f.width; velocity.x = -velocity.x * 0.45 }
+        if ny + f.height > geo.maxY { ny = geo.maxY - f.height; velocity.y = -velocity.y * 0.45 }
+
+        if ny <= geo.minY {
+            ny = geo.minY
+            let impact = abs(velocity.y)
+            if impact > 520 {
+                velocity.y = impact * 0.32
+                squash = min(1, impact / 1200)
+                spawnParticles(intensity: impact)
+                AudioManager.shared.playSfx("splash")
+                log("physics: bounce impact=\(Int(impact))")
+            } else {
+                velocity = .zero
+                falling = false
+                squash = min(0.9, impact / 900)
+                if impact > 120 { AudioManager.shared.playSfx("pop") }
+                homeCenter = NSPoint(x: nx + f.width / 2, y: ny + f.height / 2)
+                nextActionAt = now + 2
+                savePos()
+                log("physics: landed impact=\(Int(impact)) at \(Int(nx)),\(Int(ny))")
+            }
+        }
+
+        panel.setFrameOrigin(NSPoint(x: nx, y: ny))
+        airRotation = max(-0.38, min(0.38, velocity.x / 2600))
+    }
+
+    func spawnParticles(intensity: CGFloat) {
+        let n = Int(min(18, 6 + intensity / 120))
+        for _ in 0..<n {
+            let angle = CGFloat.random(in: (.pi * 0.15)...(.pi * 0.85))
+            let speed = CGFloat.random(in: 90...320) * (intensity / 600)
+            let life = CGFloat.random(in: 0.35...0.7)
+            let colors: [NSColor] = [
+                NSColor(calibratedRed: 1, green: 0.84, blue: 0.4, alpha: 1),
+                NSColor(calibratedRed: 1, green: 0.62, blue: 0.78, alpha: 1),
+                .white,
+            ]
+            particles.append(Particle(
+                p: CGPoint(x: bounds.midX + CGFloat.random(in: -18...18), y: PetView.margin + 6),
+                v: CGVector(dx: cos(angle) * speed, dy: sin(angle) * speed),
+                life: life, maxLife: life,
+                size: CGFloat.random(in: 2...5),
+                color: colors.randomElement() ?? .white
+            ))
+        }
+    }
+
+    func updateParticles() {
+        guard !particles.isEmpty else { return }
+        let dt = CGFloat(PetView.tick)
+        for i in particles.indices {
+            particles[i].p.x += particles[i].v.dx * dt
+            particles[i].p.y += particles[i].v.dy * dt
+            particles[i].v.dy -= 900 * dt
+            particles[i].life -= dt
+        }
+        particles.removeAll { $0.life <= 0 }
+    }
+
+    func drawParticles() {
+        for p in particles {
+            let a = max(0, p.life / p.maxLife)
+            p.color.withAlphaComponent(a).setFill()
+            let r = NSRect(x: p.p.x - p.size / 2, y: p.p.y - p.size / 2, width: p.size, height: p.size)
+            NSBezierPath(ovalIn: r).fill()
+        }
+    }
+
+    func debugThrow() {
+        velocity = CGPoint(x: 700, y: 900)
+        falling = true
+        log("physics: throw from \(Int(panel?.frame.minX ?? 0)),\(Int(panel?.frame.minY ?? 0))")
+    }
+
     func currentDState(_ time: TimeInterval) -> DState {
         if let s = stateOverride, time < overrideUntil { return s }
+        if falling { return .surprise }
         if dragging { return .surprise }
         if time < voiceUntil { return .talk }
         if sleeping { return .sleep }
@@ -579,11 +695,13 @@ final class PetView: NSView, NSMenuDelegate {
 
         ctx.saveGState()
         ctx.translateBy(x: bounds.midX, y: PetView.margin)
-        ctx.rotate(by: sway)
+        ctx.rotate(by: sway + airRotation)
+        ctx.scaleBy(x: 1 + 0.18 * squash, y: 1 - 0.22 * squash)
         if flip { ctx.scaleBy(x: -1, y: 1) }
         img.draw(in: CGRect(x: -w / 2, y: jump + bob, width: w, height: h),
                  from: .zero, operation: .sourceOver, fraction: 1)
         ctx.restoreGState()
+        drawParticles()
     }
 
     func drawBubble() {
@@ -642,6 +760,9 @@ final class PetView: NSView, NSMenuDelegate {
 
     override func mouseDown(with event: NSEvent) {
         lastInteract = now
+        falling = false
+        velocity = .zero
+        dragSamples.removeAll()
         if sleeping {
             sleeping = false
             speakLine("wake1")
@@ -666,6 +787,8 @@ final class PetView: NSView, NSMenuDelegate {
         if !dragging && hypot(dx, dy) > 4 { dragging = true }
         guard dragging else { return }
         moveOrigin(NSPoint(x: dragStartOrigin.x + dx, y: dragStartOrigin.y + dy))
+        dragSamples.append((t: now, x: m.x, y: m.y))
+        if dragSamples.count > 10 { dragSamples.removeFirst(dragSamples.count - 10) }
         if abs(dx) > 10 { setDir(dx < 0 ? .left : .right, facing: dx < 0 ? 1 : -1) }
         needsDisplay = true
     }
@@ -684,9 +807,18 @@ final class PetView: NSView, NSMenuDelegate {
             } else if Bool.random() {
                 say(pick(Lines.drag))
             }
-            if let f = panel?.frame { homeCenter = NSPoint(x: f.midX, y: f.midY) }
-            nextActionAt = now + 2
-            savePos()
+            let t = now
+            let recent = dragSamples.filter { t - $0.t <= 0.12 }
+            if recent.count >= 2, let a = recent.first, let b = recent.last {
+                let dt = max(0.016, b.t - a.t)
+                velocity = CGPoint(x: min(3000, max(-3000, (b.x - a.x) / dt)),
+                                   y: min(3000, max(-3000, (b.y - a.y) / dt)))
+            } else {
+                velocity = .zero
+            }
+            dragSamples.removeAll()
+            falling = true
+            log("physics: release v=\(Int(velocity.x)),\(Int(velocity.y))")
         } else {
             if skin == .dafeiyu {
                 let t = now
