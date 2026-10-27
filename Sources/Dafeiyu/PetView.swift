@@ -45,6 +45,8 @@ final class PetView: NSView, NSMenuDelegate {
     var bubbleText = ""
     var bubbleInner = false
     var bubbleUntil: TimeInterval = 0
+    /// 用户触发的话在这之前不许被自动台词覆盖(自言自语/状态播报)。
+    var bubbleProtectedUntil: TimeInterval = 0
     var lastLine = ""
     var recentLines: [String] = []
     var lastSpeakAt: TimeInterval = -999
@@ -369,7 +371,7 @@ final class PetView: NSView, NSMenuDelegate {
         switch r {
         case ..<0.22:
             if Double.random(in: 0...1) < 0.5, let line = contextualLine() {
-                say(line)
+                say(line, priority: false)
             }
             log("action: 发呆")
         case ..<0.42:
@@ -394,9 +396,9 @@ final class PetView: NSView, NSMenuDelegate {
             applyActPose(.think, time)
             if Bool.random(), time - lastSpeakAt >= 25 {
                 lastSpeakAt = time
-                say(pick(Lines.inner), inner: true)
+                say(pick(Lines.inner), inner: true, priority: false)
             } else {
-                say("……", inner: true)
+                say("……", inner: true, priority: false)
             }
             log("action: 思考")
         case ..<0.78:
@@ -493,10 +495,10 @@ final class PetView: NSView, NSMenuDelegate {
         if skin == .dafeiyu {
             stateOverride = .wave
             overrideUntil = now + 2.2
-            speak("greet")
+            speak("greet", priority: false)
             return
         }
-        say(contextualLine() ?? pick(Lines.idle))
+        say(contextualLine() ?? pick(Lines.idle), priority: false)
     }
 
     // MARK: dafeiyu 语音
@@ -517,38 +519,52 @@ final class PetView: NSView, NSMenuDelegate {
         case .coding: text = "写代码呢"
         default: text = ""
         }
-        if !text.isEmpty { say(text) }
+        if !text.isEmpty { say(text, priority: false) }
         log("activity: \(s.kind.rawValue) \(s.detail) [\(s.source)]")
     }
 
-    func speak(_ group: String) {
+    func speak(_ group: String, priority: Bool = true) {
         guard skin == .dafeiyu,
               let id = DafeiyuSkin.shared.pickVoice(group),
               let text = DafeiyuSkin.shared.line(id) else { return }
-        speakLine(id, text: text)
+        speakLine(id, text: text, priority: priority)
     }
 
-    func speakLine(_ id: String, text: String? = nil) {
+    func speakLine(_ id: String, text: String? = nil, priority: Bool = true) {
         let line = text ?? DafeiyuSkin.shared.line(id) ?? ""
         guard !line.isEmpty else { return }
+        let t = now
+        // 自动台词遇到用户气泡就让路,不要把它盖掉
+        if !priority, t < bubbleProtectedUntil {
+            log("speak: suppressed auto \(id)")
+            return
+        }
         let dur = AudioManager.shared.playVoice(id)
         bubbleText = line
         bubbleInner = false
-        bubbleUntil = now + max(2.4, dur)
-        voiceUntil = now + max(0.6, dur)
+        bubbleUntil = t + max(2.4, dur)
+        if priority { bubbleProtectedUntil = bubbleUntil + 0.3 }
+        voiceUntil = t + max(0.6, dur)
         lastLine = line
-        lastInteract = now
+        lastInteract = t
         needsDisplay = true
     }
 
     // MARK: 说话
 
-    func say(_ text: String, inner: Bool = false) {
+    func say(_ text: String, inner: Bool = false, priority: Bool = true) {
+        let t = now
+        // 自动台词遇到用户气泡就让路,不要把它盖掉
+        if !priority, t < bubbleProtectedUntil {
+            log("say: suppressed auto line")
+            return
+        }
         guard text != lastLine else { return }
         lastLine = text
         bubbleInner = inner
         bubbleText = inner ? "(\(text))" : text
-        bubbleUntil = now + 2.8
+        bubbleUntil = t + (priority ? 3.2 : 2.8)
+        if priority { bubbleProtectedUntil = bubbleUntil + 0.3 }
         log("say: \(bubbleText)")
         needsDisplay = true
     }
