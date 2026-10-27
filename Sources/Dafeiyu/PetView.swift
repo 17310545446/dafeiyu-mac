@@ -919,8 +919,11 @@ final class PetView: NSView, NSMenuDelegate {
         let textW = lines.map { ($0 as NSString).size(withAttributes: attrs).width }.max() ?? 0
         let bw = textW + 20
         let bh = CGFloat(lines.count) * lineH + 14
+        // 气泡尾巴锚定在头顶上方,间距按大小模式自适应
+        let tailGap = max(6, CGFloat(spriteH) * 0.04)
         let bx = (bounds.width - bw) / 2
-        let by = bounds.maxY - 6 - bh
+        var by = PetView.margin + CGFloat(spriteH) + tailGap + 8
+        by = min(by, bounds.maxY - 4 - bh)
 
         bg.setFill()
         let path = NSBezierPath(roundedRect: NSRect(x: bx, y: by, width: bw, height: bh), xRadius: 10, yRadius: 10)
@@ -1113,9 +1116,9 @@ final class PetView: NSView, NSMenuDelegate {
         skinItem.submenu = skinMenu
         menu.addItem(skinItem)
 
-        addCheck(menu, "静音(全部声音)", cfg.muted, #selector(menuToggleMute))
-
         let audioMenu = NSMenu()
+        addCheck(audioMenu, "静音(全部声音)", cfg.muted, #selector(menuToggleMute))
+        audioMenu.addItem(NSMenuItem.separator())
         addCheck(audioMenu, "语音", cfg.voiceEnabled, #selector(menuToggleVoice))
         addCheck(audioMenu, "音效", cfg.sfxEnabled, #selector(menuToggleSfx))
         addCheck(audioMenu, "背景音乐", cfg.bgmEnabled, #selector(menuToggleBGM))
