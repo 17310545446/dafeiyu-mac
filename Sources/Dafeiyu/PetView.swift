@@ -61,6 +61,8 @@ final class PetView: NSView, NSMenuDelegate {
     var poseFade: CGFloat = 0
     /// 跟随滞后:身体移动后的残留倾斜,模仿跟随动作。
     var lean: CGFloat = 0
+    /// 走路摆幅与待机摆幅的混合量(0 待机 / 1 走路),起步停下都不瞬间换相。
+    var walkBlend: CGFloat = 0
     var lastOriginX: CGFloat = .nan
     var timer: Timer?
 
@@ -200,8 +202,10 @@ final class PetView: NSView, NSMenuDelegate {
         if lastOriginX.isNaN { lastOriginX = ox }
         let dx = ox - lastOriginX
         lastOriginX = ox
-        let targetLean = max(-2.6, min(2.6, dx * 0.32))
-        lean += (targetLean - lean) * 0.16
+        let targetLean = max(-1.2, min(1.2, dx * 0.16))
+        lean += (targetLean - lean) * 0.09
+        let wantsWalk: CGFloat = (target != nil && !dragging) ? 1 : 0
+        walkBlend += (wantsWalk - walkBlend) * 0.08
 
         if skin == .dafeiyu {
             if time >= nextBlinkAt {
@@ -616,6 +620,19 @@ final class PetView: NSView, NSMenuDelegate {
         return w * w * (3 - 2 * w)
     }
 
+    /// 待机生命与走路摆动按 walkBlend 交叉相乘,避免起步/停下时相位突跳。
+    func blendedSway(_ time: TimeInterval, walkAmp: CGFloat) -> CGFloat {
+        let idle = idleSway(time) * (1 - actionEnvelope())
+        let walk = fsin(time * 5.5) * walkAmp
+        return idle + (walk - idle) * walkBlend
+    }
+
+    func blendedBob(_ time: TimeInterval, walkAmp: CGFloat) -> CGFloat {
+        let idle = idleBob(time) * (1 - actionEnvelope() * 0.5)
+        let walk = -abs(fsin(time * 3.6)) * walkAmp
+        return idle + (walk - idle) * walkBlend
+    }
+
     /// 永不停的待机生命:幅度极小,相位互相错开,避免"整机同步"。
     func idleSway(_ time: TimeInterval) -> CGFloat { 0.32 * fsin(time * 0.52 + 0.4) }
     func idleBob(_ time: TimeInterval) -> CGFloat { 1.6 * fsin(time * 1.05 + 1.3) }
@@ -640,13 +657,10 @@ final class PetView: NSView, NSMenuDelegate {
             return
         }
 
-        let walking = target != nil && !dragging
         let env = actionEnvelope()
-        // 动作期间底噪让位给姿势表演:摆动随包络淡出,不再整只左右摇
-        let sway: CGFloat = walking
-            ? fsin(time * 9.0) * 3.5
-            : idleSway(time) * (1 - env)
-        let bob: CGFloat = walking ? -abs(fsin(time * 4.5)) * 7.0 : idleBob(time) * (1 - env * 0.5)
+        // 动作期间底噪让位给姿势表演;走/停由 walkBlend 渐变
+        let sway = blendedSway(time, walkAmp: 1.8)
+        let bob = blendedBob(time, walkAmp: 5.0)
         let breath = idleBreath(time)
         let jump: CGFloat = jumpT > 0 ? -abs(fsin(jumpT * .pi)) * 14 * jumpT : 0
 
@@ -804,9 +818,7 @@ final class PetView: NSView, NSMenuDelegate {
         let h = CGFloat(spriteH)
         let w = h * CGFloat(img.width) / CGFloat(img.height)
 
-        let sway: CGFloat = (target != nil && !dragging)
-            ? fsin(time * 9.0) * 2.0
-            : idleSway(time) * (1 - actionEnvelope())
+        let sway = blendedSway(time, walkAmp: 1.0)
         let jump: CGFloat = jumpT > 0 ? -abs(fsin(jumpT * .pi)) * 14 * jumpT : 0
 
         let wantLeft: Bool
@@ -861,12 +873,9 @@ final class PetView: NSView, NSMenuDelegate {
         let state = currentDState(time)
         updatePoseCrossFade(state)
 
-        let walking = target != nil && !dragging
         let env = actionEnvelope()
-        let sway: CGFloat = walking
-            ? fsin(time * 9.0) * 2.2
-            : idleSway(time) * (1 - env)
-        let bob: CGFloat = walking ? -abs(fsin(time * 4.5)) * 6 : idleBob(time) * (1 - env * 0.5)
+        let sway = blendedSway(time, walkAmp: 1.1)
+        let bob = blendedBob(time, walkAmp: 4.0)
         let breath = idleBreath(time)
         let jump: CGFloat = jumpT > 0 ? -abs(fsin(jumpT * .pi)) * 14 * jumpT : 0
 
