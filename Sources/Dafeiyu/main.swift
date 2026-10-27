@@ -244,6 +244,24 @@ if let widx = CommandLine.arguments.firstIndex(of: "--weather-test") {
     exit(0)
 }
 
+if CommandLine.arguments.contains("--history-test") {
+    let msg = "记住:我喜欢白饭"
+    let chat = ChatController()
+    chat.quickSend(msg)
+    let deadline = Date().addingTimeInterval(25)
+    while Date() < deadline {
+        RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.2))
+        if let d = try? Data(contentsOf: HistoryStore.url),
+           let t = String(data: d, encoding: .utf8), t.contains("\"assistant\"") { break }
+    }
+    let path = HistoryStore.url.path
+    let text = (try? String(contentsOf: HistoryStore.url, encoding: .utf8)) ?? "(no file)"
+    print("HISTORY_FILE:", path)
+    print("BYTES:", text.utf8.count)
+    print(text.prefix(400))
+    exit(0)
+}
+
 if let idx = CommandLine.arguments.firstIndex(of: "--chat-test") {
     let msg = CommandLine.arguments.count > idx + 1 ? CommandLine.arguments[idx + 1] : "你好"
     let cfg = Config.load()
