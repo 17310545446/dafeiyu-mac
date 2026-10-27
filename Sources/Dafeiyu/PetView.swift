@@ -803,7 +803,7 @@ final class PetView: NSView, NSMenuDelegate {
         if signCurrent != nil || signPreview != nil { return "sign" }
         if let a = action {
             switch a {
-            case .stretch: return "wave"
+            case .stretch: return "confirm"   // 原来是 wave:那组帧是大甩尾,伸展用安静的点头就好
             case .think: return "type"
             default: break
             }
