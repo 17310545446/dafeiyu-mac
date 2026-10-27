@@ -1119,10 +1119,9 @@ final class PetView: NSView, NSMenuDelegate {
         let inner = bubbleInner
         let base = NSFont.systemFont(ofSize: 12)
         let font: NSFont = inner ? (NSFontManager.shared.convert(base, toHaveTrait: .italicFontMask)) : base
-        let fg: NSColor = inner ? NSColor(calibratedRed: 125 / 255, green: 125 / 255, blue: 138 / 255, alpha: 1)
-                               : NSColor(calibratedRed: 60 / 255, green: 60 / 255, blue: 80 / 255, alpha: 1)
-        let bg: NSColor = inner ? NSColor(calibratedRed: 232 / 255, green: 232 / 255, blue: 238 / 255, alpha: 0.92)
-                               : NSColor(calibratedWhite: 1.0, alpha: 0.92)
+        let fg: NSColor = inner ? Theme.dim : Theme.title
+        let bg: NSColor = inner ? NSColor(calibratedRed: 232 / 255, green: 232 / 255, blue: 238 / 255, alpha: 0.94)
+                               : Theme.surface
 
         let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: fg]
         let maxW = min(240, bounds.width - 16)
@@ -1151,8 +1150,12 @@ final class PetView: NSView, NSMenuDelegate {
         by = min(by, bounds.maxY - 4 - bh)
 
         bg.setFill()
-        let path = NSBezierPath(roundedRect: NSRect(x: bx, y: by, width: bw, height: bh), xRadius: 10, yRadius: 10)
+        let path = NSBezierPath(roundedRect: NSRect(x: bx, y: by, width: bw, height: bh),
+                                xRadius: Theme.radius, yRadius: Theme.radius)
         path.fill()
+        Theme.stroke.setStroke()
+        path.lineWidth = 1
+        path.stroke()
 
         let tail = NSBezierPath()
         tail.move(to: NSPoint(x: bounds.midX, y: by))

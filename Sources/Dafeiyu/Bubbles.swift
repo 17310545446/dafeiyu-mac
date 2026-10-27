@@ -1,10 +1,29 @@
 import AppKit
 
+/// 全部弹层(气泡 / 功能条 / 输入胶囊 / 喂食面板)共用的一套视觉参数。
+enum Theme {
+    /// 底色:轻微透的白,和桌宠气泡一致
+    static let surface = NSColor.white.withAlphaComponent(0.96)
+    static let surfaceSolid = NSColor.white
+    /// 描边:只给一层极淡的边,避免白底贴白背景看不见
+    static let stroke = NSColor.black.withAlphaComponent(0.07)
+    /// 正文与次要文字
+    static let title = NSColor(calibratedRed: 60 / 255, green: 60 / 255, blue: 80 / 255, alpha: 1)
+    static let dim = NSColor(calibratedRed: 125 / 255, green: 125 / 255, blue: 138 / 255, alpha: 1)
+    /// 强调色(发送键 / 选中)
+    static let accent = NSColor(calibratedRed: 0.34, green: 0.53, blue: 0.99, alpha: 1)
+    static let accentSoft = NSColor(calibratedRed: 0.73, green: 0.78, blue: 1, alpha: 1)
+    /// 圆角与阴影
+    static let radius: CGFloat = 12
+    static let shadowOpacity: Float = 0.16
+    static let shadowRadius: CGFloat = 10
+}
+
 /// 圆角背景视图,用来做气泡/胶囊底板。
 final class RoundedView: NSView {
-    var fillColor: NSColor = .white
-    var strokeColor: NSColor = .clear
-    var cornerRadius: CGFloat = 14
+    var fillColor: NSColor = Theme.surface
+    var strokeColor: NSColor = Theme.stroke
+    var cornerRadius: CGFloat = Theme.radius
 
     override func draw(_ dirtyRect: NSRect) {
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5),
@@ -34,6 +53,7 @@ class FloatingPanel: NSPanel {
         hidesOnDeactivate = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         isReleasedWhenClosed = false
+        hasShadow = true
     }
 
     /// 悬浮在桌宠正上方。
@@ -56,9 +76,9 @@ final class FunctionBar: FloatingPanel {
         super.init(size: FunctionBar.barSize)
 
         let bg = RoundedView(frame: NSRect(origin: .zero, size: FunctionBar.barSize))
-        bg.fillColor = NSColor.white.withAlphaComponent(0.94)
-        bg.strokeColor = NSColor.black.withAlphaComponent(0.06)
-        bg.cornerRadius = 14
+        bg.fillColor = Theme.surface
+        bg.strokeColor = Theme.stroke
+        bg.cornerRadius = Theme.radius
         bg.autoresizingMask = [.width, .height]
         contentView = bg
 
@@ -99,9 +119,9 @@ final class ChatPill: FloatingPanel, NSWindowDelegate {
         super.init(size: ChatPill.pillSize)
 
         let bg = RoundedView(frame: NSRect(origin: .zero, size: ChatPill.pillSize))
-        bg.fillColor = NSColor.white
-        bg.strokeColor = NSColor(calibratedRed: 0.90, green: 0.91, blue: 0.92, alpha: 1)
-        bg.cornerRadius = 20
+        bg.fillColor = Theme.surfaceSolid
+        bg.strokeColor = Theme.stroke
+        bg.cornerRadius = Theme.radius
         bg.autoresizingMask = [.width, .height]
         contentView = bg
 
@@ -122,7 +142,7 @@ final class ChatPill: FloatingPanel, NSWindowDelegate {
         send.isBordered = false
         send.wantsLayer = true
         send.layer?.cornerRadius = 16
-        send.layer?.backgroundColor = NSColor(calibratedRed: 0.73, green: 0.78, blue: 1, alpha: 1).cgColor
+        send.layer?.backgroundColor = Theme.accentSoft.cgColor
         send.contentTintColor = .white
         send.target = self
         send.action = #selector(submit)
@@ -147,9 +167,7 @@ final class ChatPill: FloatingPanel, NSWindowDelegate {
 
     private func updateSendStyle() {
         let hasText = !field.stringValue.trimmingCharacters(in: .whitespaces).isEmpty
-        let color = hasText
-            ? NSColor(calibratedRed: 0.34, green: 0.53, blue: 0.99, alpha: 1)
-            : NSColor(calibratedRed: 0.73, green: 0.78, blue: 1, alpha: 1)
+        let color = hasText ? Theme.accent : Theme.accentSoft
         send.layer?.backgroundColor = color.cgColor
     }
 
@@ -186,12 +204,12 @@ final class FeedBar: FloatingPanel {
         super.init(size: FeedBar.barSize)
 
         let bg = RoundedView(frame: NSRect(origin: .zero, size: FeedBar.barSize))
-        bg.fillColor = NSColor(calibratedRed: 40 / 255, green: 40 / 255, blue: 60 / 255, alpha: 0.85)
-        bg.cornerRadius = 14
+        bg.fillColor = Theme.surface
+        bg.strokeColor = Theme.stroke
+        bg.cornerRadius = Theme.radius
         bg.autoresizingMask = [.width, .height]
         contentView = bg
 
-        let pink = NSColor(calibratedRed: 1, green: 0.70, blue: 0.78, alpha: 1)
         for (i, food) in Lines.foods.enumerated() {
             let btn = NSButton(frame: NSRect(x: 12 + CGFloat(i) * 52, y: 10, width: 44, height: 44))
             btn.title = food.emoji
@@ -199,9 +217,9 @@ final class FeedBar: FloatingPanel {
             btn.isBordered = false
             btn.wantsLayer = true
             btn.layer?.cornerRadius = 22
-            btn.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.95).cgColor
-            btn.layer?.borderWidth = 2
-            btn.layer?.borderColor = pink.cgColor
+            btn.layer?.backgroundColor = Theme.dim.withAlphaComponent(0.10).cgColor
+            btn.layer?.borderWidth = 1
+            btn.layer?.borderColor = Theme.stroke.cgColor
             btn.target = self
             btn.action = #selector(pickFood(_:))
             btn.toolTip = food.name
@@ -214,7 +232,7 @@ final class FeedBar: FloatingPanel {
         close.isBordered = false
         close.wantsLayer = true
         close.layer?.cornerRadius = 13
-        close.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.8).cgColor
+        close.layer?.backgroundColor = Theme.dim.withAlphaComponent(0.12).cgColor
         close.target = self
         close.action = #selector(closeTapped)
         bg.addSubview(close)
