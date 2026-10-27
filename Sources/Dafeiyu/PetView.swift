@@ -346,11 +346,12 @@ final class PetView: NSView, NSMenuDelegate {
     /// 待机动作调度:大部分时间什么都不做,偶尔看看/想想/溜达一会儿。
     func performRandomAction(_ time: TimeInterval) {
         if Double.random(in: 0...1) < 0.12 {
-            startPlaylet()
+            // 用户触发的气泡还在,这一轮不举牌(牌子会盖住点击反馈)
+            if time >= bubbleProtectedUntil { startPlaylet() }
             nextActionAt = time + 8
             return
         }
-        if skin == .dafeiyu, let act = DafeiyuSkin.idleActs.randomElement() {
+        if skin == .dafeiyu, time >= bubbleProtectedUntil, let act = DafeiyuSkin.idleActs.randomElement() {
             stateOverride = act.pose
             overrideUntil = time + act.seconds
             if let text = DafeiyuSkin.shared.line(act.line) {
@@ -1044,6 +1045,8 @@ final class PetView: NSView, NSMenuDelegate {
     }
 
     func drawSignIfNeeded() {
+        // 气泡在显示时牌子让位:两层都锚在头顶,叠在一起就会互相盖住
+        if !bubbleText.isEmpty && now < bubbleUntil { return }
         if let preview = signPreview {
             drawSign(preview)
         } else if let cur = signCurrent {
