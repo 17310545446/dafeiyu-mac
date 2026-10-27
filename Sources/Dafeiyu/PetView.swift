@@ -598,7 +598,7 @@ final class PetView: NSView, NSMenuDelegate {
     }
 
     /// 永不停的待机生命:幅度极小,相位互相错开,避免"整机同步"。
-    func idleSway(_ time: TimeInterval) -> CGFloat { 0.9 * fsin(time * 0.62 + 0.4) }
+    func idleSway(_ time: TimeInterval) -> CGFloat { 0.32 * fsin(time * 0.52 + 0.4) }
     func idleBob(_ time: TimeInterval) -> CGFloat { 1.6 * fsin(time * 1.05 + 1.3) }
     func idleBreath(_ time: TimeInterval) -> CGFloat { 1.0 + 0.007 * fsin(time * 0.9 + 0.6) }
 
