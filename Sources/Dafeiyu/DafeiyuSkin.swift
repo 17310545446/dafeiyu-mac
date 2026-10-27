@@ -22,8 +22,10 @@ final class DafeiyuSkin {
     }
 
     static func resourceDir() -> URL {
+        // 必须确认是目录:.build/debug/dafeiyu 是同名可执行文件,只判存在会把它当资源目录用
+        var isDir: ObjCBool = false
         if let res = Bundle.main.resourceURL?.appendingPathComponent("dafeiyu"),
-           FileManager.default.fileExists(atPath: res.path) {
+           FileManager.default.fileExists(atPath: res.path, isDirectory: &isDir), isDir.boolValue {
             return res
         }
         if let env = ProcessInfo.processInfo.environment["DAFEIYU_ASSETS"] {

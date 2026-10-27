@@ -166,6 +166,12 @@ if CommandLine.arguments.contains("--shot") {
         cfg.skin = "bigfish"
     }
     log("shot: cfg ok size=\(cfg.size)")
+    // DState 只属于 dafeiyu 皮肤;直接指定姿势时自动切过去,否则画的是当前皮肤
+    if let i = CommandLine.arguments.firstIndex(of: "--shot"),
+       CommandLine.arguments.count > i + 1,
+       DState(rawValue: CommandLine.arguments[i + 1]) != nil {
+        cfg.skin = "dafeiyu"
+    }
     let skin = PetView.Skin(rawValue: cfg.skin) ?? .dafeiyu
     let view = PetView(lib: lib, cfg: cfg, spriteH: PetView.displayHeight(skin: skin, size: cfg.size))
     log("shot: view \(view.bounds)")
@@ -184,26 +190,41 @@ if CommandLine.arguments.contains("--shot") {
         view.say("我是大肥鱼，今天也在摸鱼。")
     }
     log("shot: said")
+    // 自检用:固定朝向,否则每次启动随机翻转,跨进程逐帧对比无意义
+    view.dir = .down
+    view.facing = 1
+
+    var times: [Double] = [0]
+    if let i = CommandLine.arguments.firstIndex(of: "--shot-at"),
+       CommandLine.arguments.count > i + 1 {
+        times = CommandLine.arguments[i + 1].split(separator: ",").compactMap { Double($0) }
+        if times.isEmpty { times = [0] }
+    }
+
     let size = view.bounds.size
     let W = Int(size.width * 2), H = Int(size.height * 2)
-    guard let ctx = CGContext(data: nil, width: W, height: H, bitsPerComponent: 8, bytesPerRow: 0,
-                              space: CGColorSpaceCreateDeviceRGB(),
-                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
-        log("shot: no ctx"); exit(1)
+    for at in times {
+        if at > 0 { view.startedAt = Date().addingTimeInterval(-at) }
+        guard let ctx = CGContext(data: nil, width: W, height: H, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+            log("shot: no ctx"); exit(1)
+        }
+        ctx.scaleBy(x: 2, y: 2)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: false)
+        view.draw(view.bounds)
+        NSGraphicsContext.restoreGraphicsState()
+        guard let cg = ctx.makeImage() else { log("shot: no image"); exit(1) }
+        let rep = NSBitmapImageRep(cgImage: cg)
+        let path = times.count > 1
+            ? String(format: "/tmp/pet-shot-%04d.png", Int(at * 1000))
+            : "/tmp/pet-render.png"
+        if let png = rep.representation(using: .png, properties: [:]) {
+            try? png.write(to: URL(fileURLWithPath: path))
+            log("shot: wrote \(path) \(W)x\(H)")
+        } else { log("shot: encode fail") }
     }
-    ctx.scaleBy(x: 2, y: 2)
-    NSGraphicsContext.saveGraphicsState()
-    NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: false)
-    log("shot: ctx ok")
-    view.draw(view.bounds)
-    NSGraphicsContext.restoreGraphicsState()
-    log("shot: drawn")
-    guard let cg = ctx.makeImage() else { log("shot: no image"); exit(1) }
-    let rep = NSBitmapImageRep(cgImage: cg)
-    if let png = rep.representation(using: .png, properties: [:]) {
-        try? png.write(to: URL(fileURLWithPath: "/tmp/pet-render.png"))
-        log("shot: wrote \(W)x\(H)")
-    } else { log("shot: encode fail") }
     exit(0)
 }
 

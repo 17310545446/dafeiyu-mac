@@ -51,6 +51,17 @@ final class PetView: NSView, NSMenuDelegate {
 
     var jumpT: CGFloat = 0
     var startedAt = Date()
+
+    // MARK: 动效层(B 路线)
+    /// 动作总时长,用来算进度包络;没有它动作只能硬起硬停。
+    var actionDur: CGFloat = 0
+    /// 姿势交叉淡化(避免 PNG 硬切造成"瞬移")。
+    var poseShown: DState?
+    var poseFadeFrom: DState?
+    var poseFade: CGFloat = 0
+    /// 跟随滞后:身体移动后的残留倾斜,模仿跟随动作。
+    var lean: CGFloat = 0
+    var lastOriginX: CGFloat = .nan
     var timer: Timer?
 
     var dragging = false
@@ -182,9 +193,18 @@ final class PetView: NSView, NSMenuDelegate {
 
         let time = now
 
+        // 交叉淡化与跟随滞后都走同一个 tick,不另起 timer
+        if poseFade > 0 { poseFade = max(0, poseFade - 0.22) }
+        let ox = panel.frame.minX
+        if lastOriginX.isNaN { lastOriginX = ox }
+        let dx = ox - lastOriginX
+        lastOriginX = ox
+        let targetLean = max(-2.6, min(2.6, dx * 0.32))
+        lean += (targetLean - lean) * 0.16
+
         if skin == .dafeiyu {
             if time >= nextBlinkAt {
-                blinkUntil = time + 0.12
+                blinkUntil = time + 0.14
                 nextBlinkAt = time + Double.random(in: 3...7)
             }
             if !sleeping, time - lastInteract > 180, target == nil, !dragging, !chatPaused,
@@ -337,10 +357,12 @@ final class PetView: NSView, NSMenuDelegate {
                 setDir(.up)
             }
             actionT = 1.3
+            actionDur = 1.3
             log("action: 张望 \(pick)")
         case ..<0.58:
             action = .think
             actionT = 2.0
+            actionDur = 2.0
             if Bool.random(), time - lastSpeakAt >= 25 {
                 lastSpeakAt = time
                 say(pick(Lines.inner), inner: true)
@@ -353,6 +375,7 @@ final class PetView: NSView, NSMenuDelegate {
         case ..<0.88:
             action = .stretch
             actionT = 1.0
+            actionDur = 1.0
             log("action: 伸展")
         case ..<0.95:
             jumpT = 0.5
@@ -360,6 +383,7 @@ final class PetView: NSView, NSMenuDelegate {
         default:
             action = .sway
             actionT = 1.0
+            actionDur = 1.0
             log("action: 摇晃")
         }
     }
@@ -557,6 +581,27 @@ final class PetView: NSView, NSMenuDelegate {
         needsDisplay = true
     }
 
+    // MARK: 动效层(B 路线:一个时钟、不停死、不瞬跳)
+
+    /// 动作进度 0→1,actionT 走完时正好到 1。
+    func actionProgress() -> CGFloat {
+        guard actionDur > 0 else { return 0 }
+        return min(1, max(0, 1 - actionT / actionDur))
+    }
+
+    /// 动作包络:进场 16%、出场 22% 淡入淡出,起止都不"停死"。
+    func actionEnvelope() -> CGFloat {
+        guard action != nil, actionDur > 0 else { return 0 }
+        let p = actionProgress()
+        let w = min(min(1, p / 0.16), min(1, (1 - p) / 0.22))
+        return w * w * (3 - 2 * w)
+    }
+
+    /// 永不停的待机生命:幅度极小,相位互相错开,避免"整机同步"。
+    func idleSway(_ time: TimeInterval) -> CGFloat { 0.9 * fsin(time * 0.62 + 0.4) }
+    func idleBob(_ time: TimeInterval) -> CGFloat { 1.6 * fsin(time * 1.05 + 1.3) }
+    func idleBreath(_ time: TimeInterval) -> CGFloat { 1.0 + 0.007 * fsin(time * 0.9 + 0.6) }
+
     // MARK: 绘制
 
     override func draw(_ dirtyRect: NSRect) {
@@ -577,23 +622,22 @@ final class PetView: NSView, NSMenuDelegate {
         }
 
         let walking = target != nil && !dragging
+        let env = actionEnvelope()
         let sway: CGFloat = walking
             ? fsin(time * 9.0) * 3.5
-            : (action == .sway ? fsin(time * 7.0) * 4.5 : 0)
-        let bob: CGFloat = walking ? -abs(fsin(time * 4.5)) * 7.0 : 0
-        let breath = 1.0 + 0.008 * fsin(time * 1.6)
+            : (action == .sway ? fsin(actionProgress() * .pi * 2) * 10 * env : idleSway(time))
+        let bob: CGFloat = walking ? -abs(fsin(time * 4.5)) * 7.0 : idleBob(time)
+        let breath = idleBreath(time)
         let jump: CGFloat = jumpT > 0 ? -abs(fsin(jumpT * .pi)) * 14 * jumpT : 0
 
         var actRot: CGFloat = 0
         var actSX: CGFloat = 0
         var actSY: CGFloat = 0
-        if action == .sway {
-            actRot = fsin(actionT * .pi * 2) * 10 * actionT
-        } else if action == .think {
-            actRot = 2.5
+        if action == .think {
+            actRot = 2.5 * env
         } else if action == .stretch {
-            actSY = 0.06 * fsin(actionT * .pi)
-            actSX = -0.03 * fsin(actionT * .pi)
+            actSY = 0.06 * fsin(actionProgress() * .pi) * env
+            actSX = -0.03 * fsin(actionProgress() * .pi) * env
         }
 
         let bottom = PetView.margin + CGFloat(spriteH)
@@ -605,7 +649,7 @@ final class PetView: NSView, NSMenuDelegate {
             ctx.saveGState()
             ctx.setAlpha(alpha)
             ctx.translateBy(x: bounds.midX, y: bottom)
-            ctx.rotate(by: sway + actRot + airRotation)
+            ctx.rotate(by: sway + actRot + airRotation + lean * .pi / 180)
             ctx.scaleBy(x: 1 + 0.18 * squash, y: 1 - 0.22 * squash)
             if f < 0 { ctx.scaleBy(x: -1, y: 1) }
             let rect = CGRect(x: -pw / 2, y: -ph + jump + bob, width: pw, height: ph)
@@ -735,7 +779,9 @@ final class PetView: NSView, NSMenuDelegate {
         let h = CGFloat(spriteH)
         let w = h * CGFloat(img.width) / CGFloat(img.height)
 
-        let sway: CGFloat = (target != nil && !dragging) ? fsin(time * 9.0) * 2.0 : 0
+        let sway: CGFloat = (target != nil && !dragging)
+            ? fsin(time * 9.0) * 2.0
+            : idleSway(time)
         let jump: CGFloat = jumpT > 0 ? -abs(fsin(jumpT * .pi)) * 14 * jumpT : 0
 
         let wantLeft: Bool
@@ -747,10 +793,10 @@ final class PetView: NSView, NSMenuDelegate {
 
         ctx.saveGState()
         ctx.translateBy(x: bounds.midX, y: PetView.margin)
-        ctx.rotate(by: sway + airRotation)
+        ctx.rotate(by: sway + airRotation + lean * .pi / 180)
         ctx.scaleBy(x: 1 + 0.18 * squash, y: 1 - 0.22 * squash)
         if wantLeft { ctx.scaleBy(x: -1, y: 1) }
-        ctx.draw(img, in: CGRect(x: -w / 2, y: jump, width: w, height: h))
+        ctx.draw(img, in: CGRect(x: -w / 2, y: jump + idleBob(time) * 0.6, width: w, height: h))
         ctx.restoreGState()
 
         drawParticles()
@@ -771,6 +817,8 @@ final class PetView: NSView, NSMenuDelegate {
         if dragging { return .surprise }
         if time < voiceUntil { return .talk }
         if sleeping { return .sleep }
+        // 眨眼提到走路之前:否则走路时永远眨不了眼
+        if time < blinkUntil { return .blink }
         if target != nil {
             switch Int(walkPhase) % 4 {
             case 0: return .walk1
@@ -779,24 +827,66 @@ final class PetView: NSView, NSMenuDelegate {
             default: return .walkpass
             }
         }
-        if time < blinkUntil { return .blink }
         return .idle
     }
 
     func drawDafeiyu(_ ctx: CGContext, _ time: TimeInterval) {
         let state = currentDState(time)
-        guard let img = DafeiyuSkin.shared.image(state) else { return }
+        updatePoseCrossFade(state)
 
         let walking = target != nil && !dragging
+        let env = actionEnvelope()
         let sway: CGFloat = walking
             ? fsin(time * 9.0) * 2.2
-            : (action == .sway ? fsin(time * 7.0) * 4.5 : 0)
-        let bob: CGFloat = walking ? -abs(fsin(time * 4.5)) * 6 : 0
-        let breath = 1.0 + 0.006 * fsin(time * 1.6)
+            : (action == .sway ? fsin(actionProgress() * .pi * 2) * 4.5 * env : idleSway(time))
+        let bob: CGFloat = walking ? -abs(fsin(time * 4.5)) * 6 : idleBob(time)
+        let breath = idleBreath(time)
         let jump: CGFloat = jumpT > 0 ? -abs(fsin(jumpT * .pi)) * 14 * jumpT : 0
 
-        let h = CGFloat(spriteH) * breath
-        let w = h * (img.size.width / img.size.height)
+        var actRot: CGFloat = 0
+        var actSX: CGFloat = 0
+        var actSY: CGFloat = 0
+        if action == .think { actRot = 2.5 * env }
+        if action == .stretch {
+            actSY = 0.06 * fsin(actionProgress() * .pi) * env
+            actSX = -0.03 * fsin(actionProgress() * .pi) * env
+        }
+
+        if poseFade > 0, let from = poseFadeFrom, from != state {
+            drawDafeiyuPose(ctx, from, alpha: poseFade, sway: sway, bob: bob, jump: jump,
+                            breath: breath, actRot: actRot, actSX: actSX, actSY: actSY)
+        }
+        drawDafeiyuPose(ctx, state, alpha: poseFade > 0 ? 1 - poseFade : 1, sway: sway, bob: bob,
+                        jump: jump, breath: breath, actRot: actRot, actSX: actSX, actSY: actSY)
+        drawParticles()
+        drawSignIfNeeded()
+    }
+
+    /// 只有跨"姿势家族"时才淡化;步行循环内部仍然硬切,否则会重影。
+    func updatePoseCrossFade(_ state: DState) {
+        guard let shown = poseShown else { poseShown = state; return }
+        if shown == state { return }
+        if poseFamily(shown) != poseFamily(state) {
+            poseFadeFrom = shown
+            poseFade = 1
+        }
+        poseShown = state
+    }
+
+    func poseFamily(_ s: DState) -> Int {
+        switch s {
+        case .walk1, .walkpass, .walk2: return 1
+        case .idle, .blink: return 2
+        default: return 3
+        }
+    }
+
+    func drawDafeiyuPose(_ ctx: CGContext, _ state: DState, alpha: CGFloat,
+                         sway: CGFloat, bob: CGFloat, jump: CGFloat, breath: CGFloat,
+                         actRot: CGFloat, actSX: CGFloat, actSY: CGFloat) {
+        guard alpha > 0.01, let img = DafeiyuSkin.shared.image(state) else { return }
+        let h = CGFloat(spriteH) * breath * (1 + actSY)
+        let w = h * (img.size.width / img.size.height) * (1 + actSX)
 
         let wantLeft: Bool
         switch dir {
@@ -808,14 +898,12 @@ final class PetView: NSView, NSMenuDelegate {
 
         ctx.saveGState()
         ctx.translateBy(x: bounds.midX, y: PetView.margin)
-        ctx.rotate(by: sway + airRotation)
+        ctx.rotate(by: sway + actRot + airRotation + lean * .pi / 180)
         ctx.scaleBy(x: 1 + 0.18 * squash, y: 1 - 0.22 * squash)
         if flip { ctx.scaleBy(x: -1, y: 1) }
         img.draw(in: CGRect(x: -w / 2, y: jump + bob, width: w, height: h),
-                 from: .zero, operation: .sourceOver, fraction: 1)
+                 from: .zero, operation: .sourceOver, fraction: alpha)
         ctx.restoreGState()
-        drawParticles()
-        drawSignIfNeeded()
     }
 
     func drawSignIfNeeded() {
