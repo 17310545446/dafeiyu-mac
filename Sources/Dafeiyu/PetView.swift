@@ -180,7 +180,8 @@ final class PetView: NSView, NSMenuDelegate {
 
     func tick() {
         if jumpT > 0 { jumpT = max(0, jumpT - 0.06) }
-        if crossT > 0 { crossT = max(0, crossT - 0.15) }
+        // 方向切换与姿势淡化都放慢一档:0.10/tick ≈ 200ms,切上去不“晦”
+        if crossT > 0 { crossT = max(0, crossT - 0.10) }
         if actionT > 0 {
             actionT = max(0, actionT - 0.03)
             if actionT == 0 { finishAction() }
@@ -194,7 +195,7 @@ final class PetView: NSView, NSMenuDelegate {
         let time = now
 
         // 交叉淡化与跟随滞后都走同一个 tick,不另起 timer
-        if poseFade > 0 { poseFade = max(0, poseFade - 0.22) }
+        if poseFade > 0 { poseFade = max(0, poseFade - 0.10) }
         let ox = panel.frame.minX
         if lastOriginX.isNaN { lastOriginX = ox }
         let dx = ox - lastOriginX
@@ -363,6 +364,7 @@ final class PetView: NSView, NSMenuDelegate {
             action = .think
             actionT = 2.0
             actionDur = 2.0
+            applyActPose(.think, time)
             if Bool.random(), time - lastSpeakAt >= 25 {
                 lastSpeakAt = time
                 say(pick(Lines.inner), inner: true)
@@ -376,6 +378,7 @@ final class PetView: NSView, NSMenuDelegate {
             action = .stretch
             actionT = 1.0
             actionDur = 1.0
+            applyActPose(.stretch, time)
             log("action: 伸展")
         case ..<0.95:
             jumpT = 0.5
@@ -384,6 +387,7 @@ final class PetView: NSView, NSMenuDelegate {
             action = .sway
             actionT = 1.0
             actionDur = 1.0
+            applyActPose(.sway, time)
             log("action: 摇晃")
         }
     }
@@ -404,6 +408,21 @@ final class PetView: NSView, NSMenuDelegate {
         walkSpeed = 170
         target = NSPoint(x: tx, y: ty)
         return true
+    }
+
+    /// 动作期间用对应姿势“演”,而不是整只身体摇。
+    func applyActPose(_ a: Action, _ time: TimeInterval) {
+        guard skin == .dafeiyu else { return }
+        let pose: DState
+        switch a {
+        case .think: pose = .think
+        case .stretch: pose = .wave
+        case .sway: pose = .happy
+        default: return
+        }
+        stateOverride = pose
+        // actionT 每 tick 减 0.03 而 tick 是 0.02s,动作实际时长是 actionDur / 1.5,姿势不要拖尾
+        overrideUntil = time + Double(actionDur) / 1.5
     }
 
     func finishAction() {
@@ -623,10 +642,11 @@ final class PetView: NSView, NSMenuDelegate {
 
         let walking = target != nil && !dragging
         let env = actionEnvelope()
+        // 动作期间底噪让位给姿势表演:摆动随包络淡出,不再整只左右摇
         let sway: CGFloat = walking
             ? fsin(time * 9.0) * 3.5
-            : (action == .sway ? fsin(actionProgress() * .pi * 2) * 10 * env : idleSway(time))
-        let bob: CGFloat = walking ? -abs(fsin(time * 4.5)) * 7.0 : idleBob(time)
+            : idleSway(time) * (1 - env)
+        let bob: CGFloat = walking ? -abs(fsin(time * 4.5)) * 7.0 : idleBob(time) * (1 - env * 0.5)
         let breath = idleBreath(time)
         let jump: CGFloat = jumpT > 0 ? -abs(fsin(jumpT * .pi)) * 14 * jumpT : 0
 
@@ -638,6 +658,11 @@ final class PetView: NSView, NSMenuDelegate {
         } else if action == .stretch {
             actSY = 0.06 * fsin(actionProgress() * .pi) * env
             actSX = -0.03 * fsin(actionProgress() * .pi) * env
+        } else if action == .sway {
+            // “摇晃”不再整只横摇,改成两下轻微的呼吸式起伏
+            let p = fsin(actionProgress() * .pi * 2) * env
+            actSY = 0.025 * p
+            actSX = -0.015 * p
         }
 
         let bottom = PetView.margin + CGFloat(spriteH)
@@ -781,7 +806,7 @@ final class PetView: NSView, NSMenuDelegate {
 
         let sway: CGFloat = (target != nil && !dragging)
             ? fsin(time * 9.0) * 2.0
-            : idleSway(time)
+            : idleSway(time) * (1 - actionEnvelope())
         let jump: CGFloat = jumpT > 0 ? -abs(fsin(jumpT * .pi)) * 14 * jumpT : 0
 
         let wantLeft: Bool
@@ -819,6 +844,8 @@ final class PetView: NSView, NSMenuDelegate {
         if sleeping { return .sleep }
         // 眨眼提到走路之前:否则走路时永远眨不了眼
         if time < blinkUntil { return .blink }
+        // 蹦的那一下用 cheer 姿势,比拿 idle 图平移更像“动作”
+        if jumpT > 0 { return .cheer }
         if target != nil {
             switch Int(walkPhase) % 4 {
             case 0: return .walk1
@@ -838,8 +865,8 @@ final class PetView: NSView, NSMenuDelegate {
         let env = actionEnvelope()
         let sway: CGFloat = walking
             ? fsin(time * 9.0) * 2.2
-            : (action == .sway ? fsin(actionProgress() * .pi * 2) * 4.5 * env : idleSway(time))
-        let bob: CGFloat = walking ? -abs(fsin(time * 4.5)) * 6 : idleBob(time)
+            : idleSway(time) * (1 - env)
+        let bob: CGFloat = walking ? -abs(fsin(time * 4.5)) * 6 : idleBob(time) * (1 - env * 0.5)
         let breath = idleBreath(time)
         let jump: CGFloat = jumpT > 0 ? -abs(fsin(jumpT * .pi)) * 14 * jumpT : 0
 
@@ -851,12 +878,19 @@ final class PetView: NSView, NSMenuDelegate {
             actSY = 0.06 * fsin(actionProgress() * .pi) * env
             actSX = -0.03 * fsin(actionProgress() * .pi) * env
         }
+        if action == .sway {
+            // 不再整只横摇,改成两下呼吸式起伏
+            let p = fsin(actionProgress() * .pi * 2) * env
+            actSY = 0.025 * p
+            actSX = -0.015 * p
+        }
 
+        let fade = poseFade > 0 ? poseFade * poseFade * (3 - 2 * poseFade) : 0
         if poseFade > 0, let from = poseFadeFrom, from != state {
-            drawDafeiyuPose(ctx, from, alpha: poseFade, sway: sway, bob: bob, jump: jump,
+            drawDafeiyuPose(ctx, from, alpha: fade, sway: sway, bob: bob, jump: jump,
                             breath: breath, actRot: actRot, actSX: actSX, actSY: actSY)
         }
-        drawDafeiyuPose(ctx, state, alpha: poseFade > 0 ? 1 - poseFade : 1, sway: sway, bob: bob,
+        drawDafeiyuPose(ctx, state, alpha: poseFade > 0 ? 1 - fade : 1, sway: sway, bob: bob,
                         jump: jump, breath: breath, actRot: actRot, actSX: actSX, actSY: actSY)
         drawParticles()
         drawSignIfNeeded()
