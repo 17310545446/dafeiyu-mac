@@ -1153,9 +1153,6 @@ final class PetView: NSView, NSMenuDelegate {
         let path = NSBezierPath(roundedRect: NSRect(x: bx, y: by, width: bw, height: bh),
                                 xRadius: Theme.radius, yRadius: Theme.radius)
         path.fill()
-        Theme.stroke.setStroke()
-        path.lineWidth = 1
-        path.stroke()
 
         let tail = NSBezierPath()
         tail.move(to: NSPoint(x: bounds.midX, y: by))
@@ -1163,6 +1160,11 @@ final class PetView: NSView, NSMenuDelegate {
         tail.line(to: NSPoint(x: bounds.midX + 6, y: by - 8))
         tail.close()
         tail.fill()
+
+        // 描边和举牌一致(金棕 2pt);先填尾巴再描边,接口不会断
+        Theme.stroke.setStroke()
+        path.lineWidth = Theme.strokeWidth
+        path.stroke()
 
         let para = NSMutableParagraphStyle()
         para.alignment = .center

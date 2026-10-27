@@ -2,19 +2,20 @@ import AppKit
 
 /// 全部弹层(气泡 / 功能条 / 输入胶囊 / 喂食面板)共用的一套视觉参数。
 enum Theme {
-    /// 底色:轻微透的白,和桌宠气泡一致
-    static let surface = NSColor.white.withAlphaComponent(0.96)
-    static let surfaceSolid = NSColor.white
-    /// 描边:只给一层极淡的边,避免白底贴白背景看不见
-    static let stroke = NSColor.black.withAlphaComponent(0.07)
-    /// 正文与次要文字
-    static let title = NSColor(calibratedRed: 60 / 255, green: 60 / 255, blue: 80 / 255, alpha: 1)
-    static let dim = NSColor(calibratedRed: 125 / 255, green: 125 / 255, blue: 138 / 255, alpha: 1)
-    /// 强调色(发送键 / 选中)
-    static let accent = NSColor(calibratedRed: 0.34, green: 0.53, blue: 0.99, alpha: 1)
-    static let accentSoft = NSColor(calibratedRed: 0.73, green: 0.78, blue: 1, alpha: 1)
-    /// 圆角与阴影
-    static let radius: CGFloat = 12
+    /// 底色:以举牌那块奶黄牌为准(1.0, 0.94, 0.74)
+    static let surface = NSColor(calibratedRed: 1.0, green: 0.94, blue: 0.74, alpha: 0.98)
+    static let surfaceSolid = NSColor(calibratedRed: 1.0, green: 0.94, blue: 0.74, alpha: 0.98)
+    /// 描边:牌面的金棕色,2pt(和举牌一致)
+    static let stroke = NSColor(calibratedRed: 0.84, green: 0.68, blue: 0.34, alpha: 1)
+    static let strokeWidth: CGFloat = 2
+    /// 正文与次要文字:深棕
+    static let title = NSColor(calibratedRed: 0.26, green: 0.20, blue: 0.13, alpha: 1)
+    static let dim = NSColor(calibratedRed: 0.46, green: 0.37, blue: 0.25, alpha: 1)
+    /// 强调色(发送键 / 选中),沿用牌面的金棕
+    static let accent = NSColor(calibratedRed: 0.84, green: 0.68, blue: 0.34, alpha: 1)
+    static let accentSoft = NSColor(calibratedRed: 0.93, green: 0.86, blue: 0.66, alpha: 1)
+    /// 圆角与阴影:与牌面一致
+    static let radius: CGFloat = 6
     static let shadowOpacity: Float = 0.16
     static let shadowRadius: CGFloat = 10
 }
@@ -32,7 +33,7 @@ final class RoundedView: NSView {
         path.fill()
         if strokeColor != .clear {
             strokeColor.setStroke()
-            path.lineWidth = 1
+            path.lineWidth = Theme.strokeWidth
             path.stroke()
         }
     }
@@ -129,6 +130,7 @@ final class ChatPill: FloatingPanel, NSWindowDelegate {
         field.isBordered = false
         field.drawsBackground = false
         field.font = NSFont.systemFont(ofSize: 15)
+        field.textColor = Theme.title
         field.placeholderString = "给大肥鱼发送消息"
         field.focusRingType = .none
         field.delegate = self
@@ -217,7 +219,7 @@ final class FeedBar: FloatingPanel {
             btn.isBordered = false
             btn.wantsLayer = true
             btn.layer?.cornerRadius = 22
-            btn.layer?.backgroundColor = Theme.dim.withAlphaComponent(0.10).cgColor
+            btn.layer?.backgroundColor = Theme.accentSoft.cgColor
             btn.layer?.borderWidth = 1
             btn.layer?.borderColor = Theme.stroke.cgColor
             btn.target = self
