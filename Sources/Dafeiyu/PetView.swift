@@ -64,6 +64,13 @@ final class PetView: NSView, NSMenuDelegate {
     /// 走路摆幅与待机摆幅的混合量(0 待机 / 1 走路),起步停下都不瞬间换相。
     var walkBlend: CGFloat = 0
     var lastOriginX: CGFloat = .nan
+    /// 重绘节流:空闲 30Hz,且画面量化后没变化就不画。
+    var lastDrawAt: TimeInterval = 0
+    var lastDrawSig: Int = .min
+    var tickInterval: TimeInterval = PetView.tick
+    /// 临时性能探针(DAFEIYU_PERF=1 时每 5 秒向 stderr 吐一行)
+    var perfDraws = 0
+    var perfLastAt: TimeInterval = 0
     var timer: Timer?
 
     var dragging = false
@@ -172,6 +179,18 @@ final class PetView: NSView, NSMenuDelegate {
         let t = Timer(timeInterval: PetView.tick, repeats: true) { [weak self] _ in self?.tick() }
         RunLoop.main.add(t, forMode: .common)
         timer = t
+        tickInterval = PetView.tick
+    }
+
+    /// 空闲时把定时器降到 30Hz,动起来回到 50Hz。物理/走路路径只在快速模式下跑,
+    /// 所以降频不影响陨落与步频。
+    func setTickInterval(_ interval: TimeInterval) {
+        guard abs(tickInterval - interval) > 0.0005 else { return }
+        tickInterval = interval
+        timer?.invalidate()
+        let t = Timer(timeInterval: interval, repeats: true) { [weak self] _ in self?.tick() }
+        RunLoop.main.add(t, forMode: .common)
+        timer = t
     }
 
     deinit { timer?.invalidate() }
@@ -190,8 +209,8 @@ final class PetView: NSView, NSMenuDelegate {
         }
 
         monitorTick()
-        if chatPaused { needsDisplay = true; return }
-        if dragging { needsDisplay = true; return }
+        if chatPaused { markDirty(now, fast: true); return }
+        if dragging { markDirty(now, fast: true); return }
         guard let panel else { return }
 
         let time = now
@@ -221,7 +240,7 @@ final class PetView: NSView, NSMenuDelegate {
 
         if falling {
             stepPhysics()
-            needsDisplay = true
+            markDirty(time, fast: true)
             return
         }
         if let cur = signCurrent, time >= signEnd {
@@ -302,7 +321,11 @@ final class PetView: NSView, NSMenuDelegate {
 
         let wanted: CGFloat = target != nil ? walkSpeed : 0
         curSpeed += (wanted - curSpeed) * 0.3
-        needsDisplay = true
+        // 动起来走 50Hz;静止时 30Hz 并跳过无实质变化的帧
+        let moving = target != nil || jumpT > 0 || actionT > 0
+            || crossT > 0 || poseFade > 0 || abs(lean) > 0.05
+        markDirty(time, fast: moving)
+        setTickInterval(moving ? PetView.tick : (1.0 / 30.0))
     }
 
     func monitorTick() {
@@ -620,7 +643,44 @@ final class PetView: NSView, NSMenuDelegate {
         return w * w * (3 - 2 * w)
     }
 
-    /// 待机生命与走路摆动按 walkBlend 交叉相乘,避免起步/停下时相位突跳。
+    /// 量化到像素级:避免亚像素插值带来的单帧成本。
+    func snap(_ v: CGFloat, _ step: CGFloat) -> CGFloat { (v / step).rounded() * step }
+    func snappedAngle(_ deg: CGFloat) -> CGFloat { snap(deg, 0.05) }
+
+    /// 空闲 30Hz、动起来 50Hz;并跳过"量化后没有变化"的帧。
+    func markDirty(_ time: TimeInterval, fast: Bool) {
+        let minInterval = fast ? PetView.tick : (1.0 / 30.0)
+        guard time - lastDrawAt >= minInterval else { return }
+        if !fast {
+            let sig = redrawSignature(time)
+            if sig == lastDrawSig { return }
+            lastDrawSig = sig
+        }
+        lastDrawAt = time
+        needsDisplay = true
+    }
+
+    /// 把会变的量量化成一个签名:变化不够大就不重画。
+    func redrawSignature(_ time: TimeInterval) -> Int {
+        var h = 17
+        func mix(_ v: Int) { h = h &* 31 &+ v }
+        mix(Int((idleSway(time) * 100).rounded()))
+        mix(Int((idleBob(time) * 10).rounded()))
+        mix(Int(((idleBreath(time) - 1) * 10000).rounded()))
+        mix(Int((fsin(time * 5.5) * 100).rounded()))
+        mix(Int((fsin(time * 3.6) * 100).rounded()))
+        mix(time < blinkUntil ? 1 : 0)
+        mix(Int((actionT * 200).rounded()))
+        mix(Int((jumpT * 200).rounded()))
+        mix(Int((poseFade * 100).rounded()))
+        mix(Int((crossT * 100).rounded()))
+        mix(Int((squash * 100).rounded()))
+        mix(Int((walkBlend * 100).rounded()))
+        mix(Int((lean * 100).rounded()))
+        return h
+    }
+
+    /// 走路摆幅与待机摆幅按 walkBlend 交叉相乘,避免起步/停下时相位突跳。
     func blendedSway(_ time: TimeInterval, walkAmp: CGFloat) -> CGFloat {
         let idle = idleSway(time) * (1 - actionEnvelope())
         let walk = fsin(time * 5.5) * walkAmp
@@ -641,6 +701,19 @@ final class PetView: NSView, NSMenuDelegate {
     // MARK: 绘制
 
     override func draw(_ dirtyRect: NSRect) {
+        if ProcessInfo.processInfo.environment["DAFEIYU_PERF"] != nil {
+            perfDraws += 1
+            let t = now
+            if perfLastAt == 0 { perfLastAt = t }
+            if t - perfLastAt >= 5 {
+                let walking = target != nil
+                FileHandle.standardError.write(
+                    "PERF draws=\(perfDraws) in \(String(format: "%.1f", t - perfLastAt))s walking=\(walking) action=\(action != nil) jump=\(jumpT > 0)\n"
+                        .data(using: .utf8)!)
+                perfDraws = 0
+                perfLastAt = t
+            }
+        }
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         ctx.setShouldAntialias(true)
         ctx.interpolationQuality = .high
@@ -683,15 +756,16 @@ final class PetView: NSView, NSMenuDelegate {
 
         func drawOne(_ d: Dir, _ f: CGFloat, alpha: CGFloat) {
             guard let img = spriteImage(d, f) else { return }
-            let ph = img.size.height * breath * (1 + actSY)
-            let pw = img.size.width * breath * (1 + actSX)
+            let ph = (img.size.height * breath * (1 + actSY)).rounded()
+            let pw = (img.size.width * breath * (1 + actSX)).rounded()
             ctx.saveGState()
             ctx.setAlpha(alpha)
-            ctx.translateBy(x: bounds.midX, y: bottom)
-            ctx.rotate(by: sway + actRot + airRotation + lean * .pi / 180)
+            ctx.translateBy(x: bounds.midX.rounded(), y: bottom)
+            ctx.rotate(by: snappedAngle(sway + actRot + airRotation + lean) * .pi / 180)
             ctx.scaleBy(x: 1 + 0.18 * squash, y: 1 - 0.22 * squash)
             if f < 0 { ctx.scaleBy(x: -1, y: 1) }
-            let rect = CGRect(x: -pw / 2, y: -ph + jump + bob, width: pw, height: ph)
+            let rect = CGRect(x: (-pw / 2).rounded(), y: (-ph + jump + snap(bob, 0.5)).rounded(),
+                              width: pw, height: ph)
             img.draw(in: rect, from: .zero, operation: .sourceOver, fraction: alpha)
             ctx.restoreGState()
         }
@@ -829,11 +903,14 @@ final class PetView: NSView, NSMenuDelegate {
         }
 
         ctx.saveGState()
-        ctx.translateBy(x: bounds.midX, y: PetView.margin)
-        ctx.rotate(by: sway + airRotation + lean * .pi / 180)
+        ctx.translateBy(x: bounds.midX.rounded(), y: PetView.margin)
+        ctx.rotate(by: snappedAngle(sway + airRotation + lean) * .pi / 180)
         ctx.scaleBy(x: 1 + 0.18 * squash, y: 1 - 0.22 * squash)
         if wantLeft { ctx.scaleBy(x: -1, y: 1) }
-        ctx.draw(img, in: CGRect(x: -w / 2, y: jump + idleBob(time) * 0.6, width: w, height: h))
+        let dw = w.rounded(), dh = h.rounded()
+        ctx.draw(img, in: CGRect(x: (-dw / 2).rounded(),
+                                 y: (jump + snap(idleBob(time) * 0.6, 0.5)).rounded(),
+                                 width: dw, height: dh))
         ctx.restoreGState()
 
         drawParticles()
@@ -928,8 +1005,8 @@ final class PetView: NSView, NSMenuDelegate {
                          sway: CGFloat, bob: CGFloat, jump: CGFloat, breath: CGFloat,
                          actRot: CGFloat, actSX: CGFloat, actSY: CGFloat) {
         guard alpha > 0.01, let img = DafeiyuSkin.shared.image(state) else { return }
-        let h = CGFloat(spriteH) * breath * (1 + actSY)
-        let w = h * (img.size.width / img.size.height) * (1 + actSX)
+        let h = (CGFloat(spriteH) * breath * (1 + actSY)).rounded()
+        let w = (h * (img.size.width / img.size.height) * (1 + actSX)).rounded()
 
         let wantLeft: Bool
         switch dir {
@@ -940,11 +1017,12 @@ final class PetView: NSView, NSMenuDelegate {
         let flip = wantLeft != DafeiyuSkin.shared.facesLeft(state)
 
         ctx.saveGState()
-        ctx.translateBy(x: bounds.midX, y: PetView.margin)
-        ctx.rotate(by: sway + actRot + airRotation + lean * .pi / 180)
+        ctx.translateBy(x: bounds.midX.rounded(), y: PetView.margin)
+        ctx.rotate(by: snappedAngle(sway + actRot + airRotation + lean) * .pi / 180)
         ctx.scaleBy(x: 1 + 0.18 * squash, y: 1 - 0.22 * squash)
         if flip { ctx.scaleBy(x: -1, y: 1) }
-        img.draw(in: CGRect(x: -w / 2, y: jump + bob, width: w, height: h),
+        img.draw(in: CGRect(x: (-w / 2).rounded(), y: (jump + snap(bob, 0.5)).rounded(),
+                            width: w, height: h),
                  from: .zero, operation: .sourceOver, fraction: alpha)
         ctx.restoreGState()
     }

@@ -35,6 +35,8 @@ final class BigfishSkin {
     ]
 
     private var cache: [String: CGImage] = [:]
+    /// 裁切后的单帧缓存:原来每帧都重新 cropping,浪费在重复切割上。
+    private var frameCache: [String: CGImage] = [:]
     private let dir: URL
 
     private init() {
@@ -61,6 +63,8 @@ final class BigfishSkin {
 
     /// 取某一帧(已按网格裁好)。
     func frame(_ anim: Anim, index: Int) -> CGImage? {
+        let key = "\(anim.atlas.rawValue)-\(index)"
+        if let hit = frameCache[key] { return hit }
         guard let img = atlasImage(anim.atlas) else { return nil }
         let r = rows[anim.atlas.rawValue] ?? 1
         let cols = 4
@@ -70,7 +74,9 @@ final class BigfishSkin {
         let col = idx % cols
         let row = idx / cols
         let rect = CGRect(x: col * cw, y: row * ch, width: cw, height: ch)
-        return img.cropping(to: rect)
+        let out = img.cropping(to: rect)
+        if let out { frameCache[key] = out }
+        return out
     }
 
     func frame(_ name: String, at time: TimeInterval) -> CGImage? {
