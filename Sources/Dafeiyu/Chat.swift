@@ -131,6 +131,7 @@ final class ChatController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
 
     override init() {
         super.init()
+        history = HistoryStore.load()
         buildPanel()
     }
 
@@ -221,7 +222,7 @@ final class ChatController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         input.stringValue = ""
         appendLine("你", text)
         history.append(.init(role: "user", content: text))
-        trimHistory()
+        persist()
         setBusy(true)
 
         let cfg = Config.load()
@@ -236,7 +237,7 @@ final class ChatController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
                 case .success(let reply):
                     self.appendLine("大肥鱼", reply)
                     self.history.append(.init(role: "assistant", content: reply))
-                    self.trimHistory()
+                    self.persist()
                     self.pet?.say(String(reply.prefix(24)))
                 case .failure(let err):
                     let msg = err.localizedDescription
@@ -252,7 +253,7 @@ final class ChatController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         history.append(.init(role: "user", content: trimmed))
-        trimHistory()
+        persist()
 
         let cfg = Config.load()
         let key = Keychain.read(account: "api-key") ?? ""
@@ -262,7 +263,7 @@ final class ChatController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
                 switch result {
                 case .success(let reply):
                     self.history.append(.init(role: "assistant", content: reply))
-                    self.trimHistory()
+                    self.persist()
                     let short = reply.count > 28 ? String(reply.prefix(28)) + "…" : reply
                     self.pet?.say(short)
                 case .failure(let err):
@@ -275,6 +276,18 @@ final class ChatController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
 
     private func trimHistory() {
         if history.count > 40 { history.removeFirst(history.count - 40) }
+    }
+
+    /// 裁剪后写盘。
+    private func persist() {
+        trimHistory()
+        HistoryStore.save(history)
+    }
+
+    func clearHistory() {
+        history.removeAll()
+        HistoryStore.clear()
+        appendLine("系统", "本地对话记忆已清空")
     }
 
     private func setBusy(_ on: Bool) {
@@ -291,5 +304,37 @@ final class ChatController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         let line = "\(who):\(text)\n\n"
         textView.textStorage?.append(NSAttributedString(string: line, attributes: attrs))
         textView.scrollToEndOfDocument(nil)
+    }
+}
+
+
+// MARK: - 本地对话历史(JSON,0600)
+
+enum HistoryStore {
+    static let url: URL = {
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Dafeiyu", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("chat-history.json")
+    }()
+
+    static func load() -> [LLMClient.Message] {
+        guard let data = try? Data(contentsOf: url),
+              let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: String]] else { return [] }
+        return arr.compactMap { d in
+            guard let role = d["role"], let content = d["content"], !content.isEmpty else { return nil }
+            return LLMClient.Message(role: role, content: content)
+        }
+    }
+
+    static func save(_ messages: [LLMClient.Message]) {
+        let arr: [[String: String]] = messages.map { ["role": $0.role, "content": $0.content] }
+        guard let data = try? JSONSerialization.data(withJSONObject: arr, options: [.prettyPrinted]) else { return }
+        try? data.write(to: url, options: [.atomic])
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
+
+    static func clear() {
+        try? FileManager.default.removeItem(at: url)
     }
 }

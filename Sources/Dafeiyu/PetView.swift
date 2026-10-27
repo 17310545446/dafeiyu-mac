@@ -1137,6 +1137,10 @@ final class PetView: NSView, NSMenuDelegate {
         addCheck(menu, "开机自启", cfg.autostart, #selector(menuToggleAutostart))
         menu.addItem(NSMenuItem.separator())
 
+        let clearHistoryItem = NSMenuItem(title: "清空聊天记忆", action: #selector(menuClearHistory), keyEquivalent: "")
+        clearHistoryItem.target = self
+        menu.addItem(clearHistoryItem)
+
         let chatItem = NSMenuItem(title: "聊天…", action: #selector(menuOpenChat), keyEquivalent: "k")
         chatItem.keyEquivalentModifierMask = [.control, .option]
         chatItem.target = self
@@ -1216,6 +1220,11 @@ final class PetView: NSView, NSMenuDelegate {
 
     @objc func menuToggleAutostart() {
         setAutostart(!cfg.autostart)
+    }
+
+    @objc func menuClearHistory() {
+        chat?.clearHistory()
+        say("记忆清空了")
     }
 
     @objc func menuOpenChat() {
